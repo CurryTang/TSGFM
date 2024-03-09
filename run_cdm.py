@@ -127,7 +127,7 @@ def main(params):
         5,
         out_dim,
         out_dim,
-        # drop_ratio=params.dropout,
+        drop_ratio=params.dropout,
         JK=params.JK,
     )
     bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
