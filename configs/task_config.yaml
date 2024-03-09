@@ -177,7 +177,7 @@ chempcba: &chempcba
       dataset: chempcba_eval
     - stage: test
       split_name: train
-      dataset: chempcba
+      dataset: chempcba_eval
 
 chemhiv: &chemhiv
   <<: *E2E-graph
