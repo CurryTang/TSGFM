@@ -9,15 +9,20 @@ task_names:
   - "cora_node"
   - "pubmed_link"
   - "pubmed_node"
+  - "arxiv"
+
 
 d_multiple:
   - 1.5
   - 2
   - 0.5
   - 2.5
+  - 0.7
+
 
 d_min_ratio:
   - 1
   - 1
   - 0.1
   - 2
+  - 0.2

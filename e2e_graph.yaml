@@ -5,19 +5,16 @@ lr: 0.001
 num_layers: 7
 JK : "none"
 task_names:
-  - "cora_link"
-  - "cora_node"
-  - "pubmed_link"
-  - "pubmed_node"
+  - "chemblpre"
+  - "chempcba"
+  - "chemhiv"
 
 d_multiple:
-  - 1.5
+  - 1
   - 2
-  - 0.5
-  - 2.5
+  - 4
 
 d_min_ratio:
-  - 1
-  - 1
-  - 0.1
+  - 0.2
+  - 0.2
   - 2
