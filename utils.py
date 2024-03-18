@@ -8,7 +8,7 @@ from torch_geometric.utils import (to_scipy_sparse_matrix, scatter, )
 from tqdm.autonotebook import trange
 import gc
 
-ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120}
+ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384}
 
 
 class SentenceEncoder:
@@ -24,6 +24,10 @@ class SentenceEncoder:
     def get_model(self):
         if self.name == "ST":
             self.model = SentenceTransformer("multi-qa-distilbert-cos-v1", device=self.device, cache_folder=self.root, )
+            self.encode = self.ST_encode
+        
+        elif self.name == 'minilm':
+            self.model = SentenceTransformer("all-MiniLM-L6-v2", device=self.device, cache_folder=self.root)
             self.encode = self.ST_encode
 
         elif self.name == "llama2_7b":

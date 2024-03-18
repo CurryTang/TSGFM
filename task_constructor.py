@@ -22,6 +22,8 @@ from gp.lightning.metric import (binary_auc_func, flat_binary_func, classificati
 from utils import (binary_apr_func, binary_auc_multi_func, binary_single_auc_func, classification_single_func,
                    flat_auc, )
 
+from ogb.nodeproppred import PygNodePropPredDataset
+
 name2dataset = {"arxiv": SingleGraphOFADataset, "Cora": SingleGraphOFADataset, "Pubmed": SingleGraphOFADataset,
                 "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, }
@@ -40,6 +42,16 @@ def ArxivSplitter(dataset):
     split["train"] = text_split[0]
     split["valid"] = text_split[1]
     split["test"] = text_split[2]
+    return split
+
+def OGB_Splitter(dataset):
+    if dataset.name == 'arxiv':
+        ogb_data = PygNodePropPredDataset(name='ogbn-arxiv', root=dataset.data_dir)
+    ogb_splits = ogb_data.get_idx_split()
+    split = {}
+    split["train"] = ogb_splits['train']
+    split["valid"] = ogb_splits['valid']
+    split["test"] = ogb_splits['test']
     return split
 
 
@@ -85,8 +97,8 @@ def CiteLinkSplitter(dataset):
     text_g = dataset.data
     edges = text_g.edge_index
     edge_perm = torch.randperm(len(edges[0]))
-    train_offset = int(len(edge_perm) * 0.85)
-    val_offset = int(len(edge_perm) * 0.9)
+    train_offset = int(len(edge_perm) * 0.7)
+    val_offset = int(len(edge_perm) * 0.1)
     edge_indices = {"train": edge_perm[:train_offset], "valid": edge_perm[train_offset:val_offset],
                     "test": edge_perm[val_offset:], }
     return edge_indices

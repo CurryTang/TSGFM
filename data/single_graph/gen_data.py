@@ -2,7 +2,7 @@ import importlib
 import os
 from data.ofa_data import OFAPygDataset
 
-AVAILABLE_DATA = ["Cora", "Pubmed", "wikics", "arxiv"]
+AVAILABLE_DATA = ["Cora", "Pubmed", "wikics", "arxiv", 'citeseer']
 
 
 class SingleGraphOFADataset(OFAPygDataset):

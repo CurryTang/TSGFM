@@ -84,6 +84,8 @@ def get_logic_feature(path):
 def get_data(dset):
     pyg_data = PygNodePropPredDataset(name="ogbn-arxiv", root=dset.data_dir)
     cur_path = os.path.dirname(__file__)
+    splits = pyg_data.get_idx_split()
+    pyg_data.data.splits = splits
     feat_node_texts = get_node_feature(cur_path).tolist()
     class_node_texts = get_label_feature(cur_path).tolist()
     logic_node_texts = get_logic_feature(cur_path)

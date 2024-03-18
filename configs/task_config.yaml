@@ -22,6 +22,10 @@ pubmed_node: &pubmed_node
   <<: *E2E-node
   dataset: pubmed_node
 
+citeseer_node: &citeseer_node
+  <<: *E2E-node
+  dataset: citeseer_node
+
 wikics: &wikics
   <<: *E2E-node
   dataset: wikics

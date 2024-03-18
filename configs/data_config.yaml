@@ -12,7 +12,7 @@ E2E-node: &E2E-node
 arxiv: &arxiv
   <<: *E2E-node
   dataset_name: arxiv
-  dataset_splitter: ArxivSplitter
+  dataset_splitter: OGB_Splitter
   process_label_func: process_pth_label
   num_classes: 40
 
@@ -29,6 +29,13 @@ cora_node: &cora_node
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 7
+
+citeseer_node: &citeseer_node
+  <<: *E2E-node
+  dataset_name: citeseer
+  dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 6
 
 logic_cora: &logic_cora
   <<: *cora_node
