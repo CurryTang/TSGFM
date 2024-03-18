@@ -163,3 +163,4 @@ cython_debug/
 
 cache_data
 saved_exp
+cache_data_*
