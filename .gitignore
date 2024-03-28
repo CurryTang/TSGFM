@@ -164,3 +164,14 @@ cython_debug/
 cache_data
 saved_exp
 cache_data_*
+
+*.pt 
+*.out
+models--*
+cache_data
+cache_data_*
+.locks/
+out/
+save 
+saved_exp
+wandb
