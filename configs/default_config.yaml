@@ -22,3 +22,9 @@ task_names:
 llm_name: "minilm"
 llm_b_size: 1
 val_interval: 1
+accelerator: "auto"
+metric_agg: "argmax"
+repeats: 1
+r_repeats: 1
+n_trials: 50
+output_select: "val"

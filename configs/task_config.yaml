@@ -14,6 +14,10 @@ arxiv: &arxiv
   <<: *E2E-node
   dataset: arxiv
 
+arxiv23: &arxiv23
+  <<: *E2E-node
+  dataset: arxiv23
+
 cora_node: &cora_node
   <<: *E2E-node
   dataset: cora_node
@@ -70,6 +74,25 @@ E2E-link: &E2E-link
   eval_pool_mode: mean
   task_level: e2e_link
 
+# cora_link: &cora_link
+#   <<: *E2E-link
+#   eval_set_constructs:
+#     - stage: train
+#       split_name: train
+#       dataset: cora_link
+#     - stage: valid
+#       split_name: valid
+#       dataset: cora_link_eval
+#     - stage: valid
+#       split_name: valid
+#       dataset: cora_node
+#     - stage: test
+#       split_name: test
+#       dataset: cora_link_eval
+#     - stage: test
+#       split_name: train
+#       dataset: cora_link
+
 cora_link: &cora_link
   <<: *E2E-link
   eval_set_constructs:
@@ -79,9 +102,6 @@ cora_link: &cora_link
     - stage: valid
       split_name: valid
       dataset: cora_link_eval
-    - stage: valid
-      split_name: valid
-      dataset: cora_node
     - stage: test
       split_name: test
       dataset: cora_link_eval

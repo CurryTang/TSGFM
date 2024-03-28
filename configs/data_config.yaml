@@ -16,6 +16,13 @@ arxiv: &arxiv
   process_label_func: process_pth_label
   num_classes: 40
 
+arxiv23: &arxiv23
+  <<: *E2E-node
+  dataset_name: arxiv23
+  dataset_splitter: OGB_Splitter
+  process_label_func: process_pth_label
+  num_classes: 40
+
 logic_arxiv: &logic_arxiv
   <<: *arxiv
   task_level: logic_e2e
@@ -25,7 +32,7 @@ logic_arxiv: &logic_arxiv
 
 cora_node: &cora_node
   <<: *E2E-node
-  dataset_name: Cora
+  dataset_name: cora
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 7
@@ -46,7 +53,7 @@ logic_cora: &logic_cora
 
 pubmed_node: &pubmed_node
   <<: *E2E-node
-  dataset_name: Pubmed
+  dataset_name: pubmed
   dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 3
@@ -74,14 +81,14 @@ E2E-link-cite: &E2E-link-cite
   construct: ConstructLinkCls
   dataset_splitter: CiteLinkSplitter
   process_label_func: process_int_label
-  eval_metric: auc
+  eval_metric: hits@k
   eval_func: binary_auc_func
   num_classes: 2
   eval_mode: max
 
 cora_link: &cora_link
   <<: *E2E-link-cite
-  dataset_name: Cora
+  dataset_name: cora
 
 cora_link_eval:
   <<: *cora_link
@@ -90,7 +97,7 @@ cora_link_eval:
 
 pubmed_link: &pubmed_link
   <<: *E2E-link-cite
-  dataset_name: Pubmed
+  dataset_name: pubmed
 
 pubmed_link_eval:
   <<: *pubmed_link
@@ -222,7 +229,7 @@ arxiv_fs_55:
 
 cora_fs: &cora_fs
   <<: *LR-node
-  dataset_name: Cora
+  dataset_name: cora
   dataset_splitter: CiteFSSplitter
   process_label_func: process_int_label
   args:

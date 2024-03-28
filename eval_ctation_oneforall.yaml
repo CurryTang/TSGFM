@@ -1,0 +1,34 @@
+batch_size: 256
+eval_batch_size: 256
+dropout: 0.15
+lr: 0.001
+num_layers: 5
+JK : "none"
+task_names:
+  - "citeseer_node"
+  - "cora_node"
+  - "pubmed_node"
+  - "arxiv"
+  - "arxiv23"
+
+# 120 / 3000 ->2 
+# 140 / 3000 -> 2
+# 60 / 19000  -> 1.5
+# 0.6 -> 100000 -> 5
+# 0.6 -> 24000 -> 4
+
+d_multiple:
+  - 15
+  - 15
+  - 20
+  - 1
+  - 1
+
+
+d_min_ratio:
+  - 1
+  - 1
+  - 2
+  - 0.2
+  - 0.2
+
