@@ -12,8 +12,8 @@ import torch
 import torch.nn as nn
 from torch import optim as optim
 from tensorboardX import SummaryWriter
-
-
+from graphmae.data_util import load_downstream_dataset
+from copy import deepcopy
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
@@ -43,6 +43,12 @@ def build_args():
     parser = argparse.ArgumentParser(description="GAT")
     parser.add_argument("--seeds", type=int, nargs="+", default=[0])
     parser.add_argument("--dataset", type=str, default="cora")
+    parser.add_argument('--tag_data_path', type=str, default="./cache_data_minilm")
+    parser.add_argument("--pre_train_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed", "arxiv", "arxiv23"])
+    parser.add_argument("--downstream_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed"])
+    parser.add_argument('--initial_weight', type=float, nargs='+', default = [1.,1.,1.,1.,1.])
+    parser.add_argument('--min_ratio', type=float, default = [1.,1.,1.,1.,1.])
+    parser.add_argument('--rep', type=list, default=[0,0,0])
     parser.add_argument("--device", type=int, default=-1)
     parser.add_argument("--max_epoch", type=int, default=200,
                         help="number of training epochs")
@@ -91,11 +97,18 @@ def build_args():
     parser.add_argument("--logging", action="store_true")
     parser.add_argument("--scheduler", action="store_true", default=False)
     parser.add_argument("--concat_hidden", action="store_true", default=False)
+    parser.add_argument('--multi_sup_mode', action="store_true", default=False)
+    parser.add_argument('--mode', type=str, default='sup')
+    parser.add_argument('--count', type=int, default=30)
+    parser.add_argument('--patience', type=int, default=5)
+    parser.add_argument('--drop_feat', action="store_true", default=False)
 
     # for graph classification
     parser.add_argument("--pooling", type=str, default="mean")
     parser.add_argument("--deg4feat", action="store_true", default=False, help="use node degree as input feature")
     parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--partition_size", type=int, default=5000)
+    parser.add_argument("--halo_hop", type=int, default=1)
     args = parser.parse_args()
     return args
 
@@ -273,3 +286,92 @@ class NormLayer(nn.Module):
         std = ((std.T / batch_list).T + 1e-6).sqrt()
         std = std.repeat_interleave(batch_list, dim=0)
         return self.weight * sub / std + self.bias
+    
+
+def update_namespace(namespace, update_dict):
+  """
+  Updates the values in a namespace using a dictionary.
+
+  Args:
+      namespace: The namespace object to be updated.
+      update_dict: A dictionary containing keys and values to be updated in the namespace.
+
+  Raises:
+      AttributeError: If an attribute in the update_dict is not found in the namespace.
+  """
+  for key, value in update_dict.items():
+    if not hasattr(namespace, key):
+      print(f"warning: Namespace does not have attribute: {key}")
+    setattr(namespace, key, value)
+
+
+
+class Records(object):
+    """
+        record the evaluation performance of models to dynamiclly tune the dataset weight
+    """
+    def __init__(self, datasets, args, initial_weight = None, min_ratio = None) -> None:
+        self.datasets = datasets
+        if initial_weight == None:
+            self.weight = np.ones(len(datasets))
+        else:
+            self.weight = initial_weight
+        assert len(self.weight) == len(datasets)
+        if min_ratio == None:
+            self.min_ratio = np.ones(len(datasets))
+        else:
+            self.min_ratio = min_ratio
+        self.train_indexes = []
+        self.impatience = [0 for _ in range(len(datasets))]
+        self.metric = [0 for _ in range(len(datasets))]
+        ## this one is the average
+        self.test_acc = 0
+        self.val_acc = 0
+        self.records = [[] for _ in range(len(datasets))]
+        self.patience = 3
+        self.window_size = 3
+        if isinstance(self.patience, int):
+            self.patience = np.zeros(len(datasets)) + self.patience
+        self.inpatience = np.zeros(len(self.patience))
+        if isinstance(self.window_size, int):
+            self.window_size = np.zeros(len(self.datasets)) + self.window_size
+        self.args = args
+        self.pat = 0
+        self.best_test_acc = None 
+        self.best_val_acc = None
+        
+    def update_metric(self, i, val):
+        self.metric[i] = val
+        self.records[i].append(val)
+
+    def update_test_acc(self, val_acc, test_acc, estp_accs, estp_val_accs):
+        if val_acc > self.val_acc:
+            self.val_acc = val_acc
+            self.test_acc = test_acc
+            self.best_test_acc = estp_accs
+            self.best_val_acc = estp_val_accs
+            self.pat = 0
+        else:
+            self.pat += 1
+    
+    def update_weight(self):
+        metric = np.array(self.metric)
+        p_records = np.array(self.records)
+        for i in range(len(self.datasets)):
+            if self.weight[i] == 1 and self.min_ratio[i] == 1:
+                continue
+            if len(p_records[0]) < self.window_size:
+                continue
+
+            vals = p_records[i, -self.window_size:]
+            mean = np.mean(vals)
+            cur = metric[i]
+
+            if cur < mean:
+                self.impatience[i] += 1
+            else:
+                self.impatience[i] = 0
+            if self.impatience[i] >= self.patience[i]:
+                self.weight[i] = max(self.min_ratio[i],
+                                               self.weight[i] / 2) 
+            self.records[i].append(cur)

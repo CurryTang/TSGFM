@@ -1,10 +1,10 @@
 import os
 import pandas as pd
 import torch
+import numpy as np
 from data.ofa_data import OFAPygDataset
 from ogb.nodeproppred import PygNodePropPredDataset
-
-
+from torch_geometric.data.download import download_google_url, download_url
 
 def get_taxonomy(path):
     # read categories and description file
@@ -54,11 +54,18 @@ def get_label_feature(path):
 
 
 def get_data(dset):
-    
     cur_path = os.path.dirname(__file__)
-
-    pyg_data.data.splits = splits
-    feat_node_texts = get_node_feature(cur_path).tolist()
+    if not os.path.exists(os.path.join(cur_path, "arxiv23.csv")):
+        csv_path = download_google_url("1-s1Hf_2koa1DYp_TQvYetAaivK9YDerv", cur_path, "arxiv23.csv")
+    else:
+        csv_path = os.path.join(cur_path, "arxiv23.csv")
+    if not os.path.exists(os.path.join(cur_path, "arxiv23.pt")):
+        pyg_path = download_url("https://github.com/XiaoxinHe/TAPE/raw/main/dataset/arxiv_2023/graph.pt", folder=cur_path, filename="arxiv23.pt")
+    else:
+        pyg_path = os.path.join(cur_path, "arxiv23.pt")
+    pyg_data = torch.load(pyg_path)
+    pd_data = pd.read_csv(csv_path)
+    feat_node_texts = (pd_data['title'] + ':' + pd_data['abstract']).to_list()
     class_node_texts = get_label_feature(cur_path).tolist()
     feat_edge_texts = ["feature edge. citation"]
     noi_node_texts = ["prompt node. node classification of literature category"]
@@ -72,5 +79,5 @@ def get_data(dset):
                                    "class_node_text_feat": ["class_node_text_feat",
                                                             torch.arange(len(class_node_texts))],
                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
-    return ([pyg_data.data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
+    return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
         prompt_edge_texts, ], prompt_text_map,)

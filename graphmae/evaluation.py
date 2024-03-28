@@ -6,7 +6,7 @@ import torch.nn as nn
 from graphmae.utils import create_optimizer, accuracy
 
 
-def node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob=True, mute=False):
+def node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob=True, mute=False, return_val=False):
     model.eval()
     if linear_prob:
         with torch.no_grad():
@@ -23,11 +23,19 @@ def node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_de
     
     encoder.to(device)
     optimizer_f = create_optimizer("adam", encoder, lr_f, weight_decay_f)
-    final_acc, estp_acc = linear_probing_for_transductive_node_classiifcation(encoder, graph, x, optimizer_f, max_epoch_f, device, mute)
-    return final_acc, estp_acc
+    if return_val:
+        final_acc, estp_acc, val_acc, estp_val_acc = linear_probing_for_transductive_node_classiifcation(encoder, graph, x, optimizer_f, max_epoch_f, device, mute, return_val)
+        if not linear_prob:
+            model.encoder.reset_back()
+        return final_acc, estp_acc, val_acc, estp_val_acc
+    else:
+        final_acc, estp_acc = linear_probing_for_transductive_node_classiifcation(encoder, graph, x, optimizer_f, max_epoch_f, device, mute, return_val)
+        if not linear_prob:
+            model.encoder.reset_back()
+        return final_acc, estp_acc
 
 
-def linear_probing_for_transductive_node_classiifcation(model, graph, feat, optimizer, max_epoch, device, mute=False):
+def linear_probing_for_transductive_node_classiifcation(model, graph, feat, optimizer, max_epoch, device, mute=False, return_val=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     graph = graph.to(device)
@@ -36,7 +44,7 @@ def linear_probing_for_transductive_node_classiifcation(model, graph, feat, opti
     train_mask = graph.ndata["train_mask"]
     val_mask = graph.ndata["val_mask"]
     test_mask = graph.ndata["test_mask"]
-    labels = graph.ndata["label"]
+    labels = graph.ndata["y"]
 
     best_val_acc = 0
     best_val_epoch = 0
@@ -76,13 +84,17 @@ def linear_probing_for_transductive_node_classiifcation(model, graph, feat, opti
     with torch.no_grad():
         pred = best_model(graph, x)
         estp_test_acc = accuracy(pred[test_mask], labels[test_mask])
+        estp_val_acc = accuracy(pred[val_mask], labels[val_mask])
     if mute:
         print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
     else:
         print(f"--- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
 
     # (final_acc, es_acc, best_acc)
-    return test_acc, estp_test_acc
+    if not return_val:
+        return test_acc, estp_test_acc
+    else:
+        return test_acc, estp_test_acc, val_acc, estp_val_acc
 
 
 def linear_probing_for_inductive_node_classiifcation(model, x, labels, mask, optimizer, max_epoch, device, mute=False):

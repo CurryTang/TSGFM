@@ -8,7 +8,7 @@ import numpy as np
 import torch_geometric as pyg
 from torch_geometric.data import InMemoryDataset, Dataset
 from abc import ABC, abstractmethod
-
+import numpy as np
 from utils import SentenceEncoder
 
 
@@ -60,6 +60,7 @@ class OFAPygDataset(InMemoryDataset, ABC):
             raise NotImplementedError("LLM encoder is not defined")
         if data is None:
             return None
+        data = np.nan_to_num(data, nan='')
         embeddings = self.encoder.encode(data).cpu()
         return embeddings
 
@@ -220,3 +221,7 @@ class OFAPygSTDataset(OFAPygDataset):
     def get(self, idx):
         data = torch.load(self.processed_paths[idx + 3])
         return data
+
+
+
+

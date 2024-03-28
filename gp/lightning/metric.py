@@ -4,10 +4,13 @@ import copy
 from typing import Any, Callable, Optional, Literal, List, Union
 from torchmetrics import MeanAbsoluteError, Accuracy, AUROC, MeanMetric, Metric
 from torchmetrics.text import BLEUScore
+from torchmetrics.utilities import dim_zero_cat
 from itertools import chain
+from ogb.linkproppred.evaluate import Evaluator
 
 
 def classification_func(func, output, batch):
+    ## transform the (N * k) to (N, k)
     output = output.view(-1, batch.num_classes[0])
     return func(output, batch.y.view(-1).to(torch.long))
 
@@ -154,6 +157,8 @@ class EvalKit(torch.nn.Module):
         return self.metric_name[state]
 
 
+
+
 def prepare_mae(exp_name, eval_state=["train_eval", "test", "valid"]):
     evlter = MeanAbsoluteError()
     loss = torch.nn.L1Loss()
@@ -292,3 +297,37 @@ def prepare_metric(metric, params, exp_name, data, eval_state=None):
         return available_metrics[metric](params, exp_name, data, eval_state)
     else:
         return available_metrics[metric](params, exp_name, data)
+
+
+
+class HitsAtK(Metric):
+    def __init__(self, k = 100, **kwargs):
+        super().__init__(**kwargs)
+        self.add_state("preds", default=[], dist_reduce_fx="cat")
+        self.add_state("target", default=[], dist_reduce_fx="cat")
+        self.evaluator = Evaluator(name='ogbl-ppa')
+        self.K = k
+
+    def update(self, preds, target) -> None:
+        self.preds.append(preds)
+        self.target.append(target)
+
+    def compute(self):
+        # parse inputs
+        preds = dim_zero_cat(self.preds)
+        target = dim_zero_cat(self.target)
+        # some intermediate computation...
+        pos_edge_pred = preds[target == 1]
+        neg_edge_pred = preds[target == 0]
+
+        ## skip eval_step
+        if len(pos_edge_pred) == 0 or len(neg_edge_pred) == 0:
+            return torch.tensor(0)
+
+        res = self.evaluator.eval({
+            'y_pred_pos': pos_edge_pred,
+            'y_pred_neg': neg_edge_pred
+        })[f'hits@{self.K}']
+
+        return torch.tensor(res)
+        

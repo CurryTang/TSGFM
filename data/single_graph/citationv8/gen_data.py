@@ -2,31 +2,25 @@ import os
 import pandas as pd
 import torch
 import torch_geometric as pyg
+from data.ofa_data import OFAPygDataset
+from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.data.download import download_google_url
-from torch_geometric.utils import coalesce, to_undirected
+import dgl
 
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
-    path = os.path.join(cur_path, "citeseer.pt")
-    if not os.path.exists(path):
-        download_google_url("1JRJHDiKFKiUpozGqkWhDY28E6F4v5n7l", cur_path, "citeseer.pt")
-    data = torch.load(path)
-    text = data.raw_texts
-    label_names = data.label_names
-    nx_g = pyg.utils.to_networkx(data, to_undirected=True)
-    edge_index = torch.tensor(list(nx_g.edges())).T
-    print(edge_index.size())
-    data_dict = data.to_dict()
-    data_dict["edge_index"] = edge_index
-    new_data = pyg.data.data.Data(**data_dict)
-    new_data.edge_index = coalesce(to_undirected(new_data.edge_index))
-    category_desc = pd.read_csv(
-        os.path.join(os.path.dirname(__file__), "categories.csv"), sep=","
-    ).values
-    ordered_desc = []
-    for i, label in enumerate(label_names):
-        true_ind = label == category_desc[:, 0]
-        ordered_desc.append((label, category_desc[:, 1][true_ind]))
+    if not os.path.exists(os.path.join(cur_path, "citationv8.csv")):
+        csv_path = download_google_url("1qK9Jj-q2uXP69Gqw3jqLzkzEvdQv8VRQ", cur_path, "citationv8.csv")
+    else:
+        csv_path = os.path.join(cur_path, "citationv8.csv")
+    if not os.path.exists(os.path.join(cur_path, "citationv8.pt")):
+        pt_path = download_google_url("1xykV3HmvC9JWtHRO0-B4S4JqaWEfW8QM", cur_path, "citationv8.pt")
+    else:
+        pt_path = os.path.join(cur_path, "citationv8.pt")
+    dgl_data = dgl.load_graphs(pt_path)[0][0]
+    pd_data = pd.read_csv(csv_path)
+    edges = dgl_data.edges()
+    edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
     clean_text = ["feature node. paper title and abstract: " + t for t in text]
     label_text = [
         "prompt node. literature category and description: "
@@ -56,7 +50,7 @@ def get_data(dset):
             clean_text,
             edge_text,
             noi_node_text + noi_node_edge_text,
-            label_text + edge_label_text,
+            label_text + edge_label_text + logic_label_text,
             prompt_edge_text,
         ],
         {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
@@ -68,6 +62,12 @@ def get_data(dset):
                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
          "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                      "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_text))],
-                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}
+                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]},
+         "logic_e2e": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
+                       "class_node_text_feat": ["class_node_text_feat",
+                                                torch.arange(len(label_text) + len(edge_label_text),
+                                                             len(label_text) + len(edge_label_text) + len(
+                                                                 logic_label_text))],
+                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
          }
     )
