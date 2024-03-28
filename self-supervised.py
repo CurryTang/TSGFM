@@ -1,6 +1,7 @@
 ## GCC
 ## DGI
 ## GraphMAE
+## Multi-cotrain
 
 import numpy as np
 import torch
@@ -18,168 +19,81 @@ from graphmae.utils import (
     set_random_seed,
     TBLogger,
     get_current_lr,
+    Records
 )
-from graphmae.datasets.data_util import load_inductive_dataset
+from graphmae.data_util import load_pretrain_dataset, load_train_segments, load_downstream_dataset
 from graphmae.models import build_model
-from graphmae.evaluation import linear_probing_for_inductive_node_classiifcation, LogisticRegression
+from graphmae.evaluation import node_classification_evaluation
 
 
-def evaluete(model, loaders, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob=True, mute=False):
-    model.eval()
-    if linear_prob:
-        if len(loaders[0]) > 1:
-            x_all = {"train": [], "val": [], "test": []}
-            y_all = {"train": [], "val": [], "test": []}
-
-            with torch.no_grad():
-                for key, loader in zip(["train", "val", "test"], loaders):
-                    for subgraph in loader:
-                        subgraph = subgraph.to(device)
-                        feat = subgraph.ndata["feat"]
-                        x = model.embed(subgraph, feat)
-                        x_all[key].append(x)
-                        y_all[key].append(subgraph.ndata["label"])  
-            in_dim = x_all["train"][0].shape[1]
-            encoder = LogisticRegression(in_dim, num_classes)
-            num_finetune_params = [p.numel() for p in encoder.parameters() if  p.requires_grad]
-            if not mute:
-                print(f"num parameters for finetuning: {sum(num_finetune_params)}")
-                # torch.save(x.cpu(), "feat.pt")
-            
-            encoder.to(device)
-            optimizer_f = create_optimizer("adam", encoder, lr_f, weight_decay_f)
-            final_acc, estp_acc = mutli_graph_linear_evaluation(encoder, x_all, y_all, optimizer_f, max_epoch_f, device, mute)
-            return final_acc, estp_acc
-        else:
-            x_all = {"train": None, "val": None, "test": None}
-            y_all = {"train": None, "val": None, "test": None}
-
-            with torch.no_grad():
-                for key, loader in zip(["train", "val", "test"], loaders):
-                    for subgraph in loader:
-                        subgraph = subgraph.to(device)
-                        feat = subgraph.ndata["feat"]
-                        x = model.embed(subgraph, feat)
-                        mask = subgraph.ndata[f"{key}_mask"]
-                        x_all[key] = x[mask]
-                        y_all[key] = subgraph.ndata["label"][mask]  
-            in_dim = x_all["train"].shape[1]
-            
-            encoder = LogisticRegression(in_dim, num_classes)
-            encoder = encoder.to(device)
-            optimizer_f = create_optimizer("adam", encoder, lr_f, weight_decay_f)
-
-            x = torch.cat(list(x_all.values()))
-            y = torch.cat(list(y_all.values()))
-            num_train, num_val, num_test = [x.shape[0] for x in x_all.values()]
-            num_nodes = num_train + num_val + num_test
-            train_mask = torch.arange(num_train, device=device)
-            val_mask = torch.arange(num_train, num_train + num_val, device=device)
-            test_mask = torch.arange(num_train + num_val, num_nodes, device=device)
-            
-            final_acc, estp_acc = linear_probing_for_inductive_node_classiifcation(encoder, x, y, (train_mask, val_mask, test_mask), optimizer_f, max_epoch_f, device, mute)
-            return final_acc, estp_acc
-    else:
-        raise NotImplementedError
+def multi_eval(model, downstreams, device, lr_f, weight_decay_f, max_epoch_f, linear_prob, args, return_val = True):
+    logging.info("start evaluating..")
+    test_accs = []
+    estp_accs = []
+    val_accs = []
+    estp_val_accs = []
+    for i, g in enumerate(downstreams):
+        graph = g.to(device)
+        x = g.ndata["x"].to(device)
+        label = g.ndata["y"].to(device)
+        num_classes = label.max().item() + 1
+        final_acc, estp_acc, val_acc, estp_val_acc = node_classification_evaluation(
+            model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob, mute=True, return_val = return_val)
+        test_accs.append(final_acc)
+        estp_accs.append(estp_acc)
+        val_accs.append(val_acc)
+        estp_val_accs.append(estp_val_acc)
+    return test_accs, estp_accs, val_accs, estp_val_accs
 
 
-def mutli_graph_linear_evaluation(model, feat, labels, optimizer, max_epoch, device, mute=False):
-    criterion = torch.nn.BCEWithLogitsLoss()
 
-    best_val_acc = 0
-    best_val_epoch = 0
-    best_val_test_acc = 0
-
-    if not mute:
-        epoch_iter = tqdm(range(max_epoch))
-    else:
-        epoch_iter = range(max_epoch)
-
-    for epoch in epoch_iter:
-        model.train()
-        for x, y in zip(feat["train"], labels["train"]):
-            out = model(None, x)
-            loss = criterion(out, y)
-            optimizer.zero_grad()
-            loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3)
-            optimizer.step()
-
-        with torch.no_grad():
-            model.eval()
-            val_out = []
-            test_out = []
-            for x, y in zip(feat["val"], labels["val"]):
-                val_pred = model(None, x)
-                val_out.append(val_pred)
-            val_out = torch.cat(val_out, dim=0).cpu().numpy()
-            val_label = torch.cat(labels["val"], dim=0).cpu().numpy()
-            val_out = np.where(val_out >= 0, 1, 0)
-
-            for x, y in zip(feat["test"], labels["test"]):
-                test_pred = model(None, x)# 
-                test_out.append(test_pred)
-            test_out = torch.cat(test_out, dim=0).cpu().numpy()
-            test_label = torch.cat(labels["test"], dim=0).cpu().numpy()
-            test_out = np.where(test_out >= 0, 1, 0)
-
-            val_acc = f1_score(val_label, val_out, average="micro")
-            test_acc = f1_score(test_label, test_out, average="micro")
-        
-        if val_acc >= best_val_acc:
-            best_val_acc = val_acc
-            best_val_epoch = epoch
-            best_val_test_acc = test_acc
-
-        if not mute:
-            epoch_iter.set_description(f"# Epoch: {epoch}, train_loss:{loss.item(): .4f}, val_acc:{val_acc}, test_acc:{test_acc: .4f}")
-
-    if mute:
-        print(f"# IGNORE: --- Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch}, Early-stopping-TestAcc: {best_val_test_acc:.4f},  Final-TestAcc: {test_acc:.4f}--- ")
-    else:
-        print(f"--- Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch}, Early-stopping-TestAcc: {best_val_test_acc:.4f}, Final-TestAcc: {test_acc:.4f} --- ")
-
-    return test_acc, best_val_test_acc
-
-
-def pretrain(model, dataloaders, optimizer, max_epoch, device, scheduler, num_classes, lr_f, weight_decay_f, max_epoch_f, linear_prob, logger=None):
+def pretrain(model, dataloaders, d_map, downstreams, optimizer, max_epoch, device, scheduler, lr_f, weight_decay_f, max_epoch_f, linear_prob, args, logger=None):
     logging.info("start training..")
-    train_loader, val_loader, test_loader, eval_train_loader = dataloaders
-
+    
     epoch_iter = tqdm(range(max_epoch))
-
-    if isinstance(train_loader, list) and len(train_loader) ==1:
-        train_loader = [train_loader[0].to(device)]
-        eval_train_loader = train_loader
-    if isinstance(val_loader, list) and len(val_loader) == 1:
-        val_loader = [val_loader[0].to(device)]
-        test_loader = val_loader
+    records = Records(args.pre_train_datasets, args, args.initial_weight, args.min_ratio)
 
     for epoch in epoch_iter:
         model.train()
-        loss_list = []
+        loss_list = [[] for _ in range(len(args.pre_train_datasets))]
+        loss_np = []
 
-        for subgraph in train_loader:
+        for i, subgraph in enumerate(dataloaders):
+            subgraph = subgraph.remove_self_loop().add_self_loop()
             subgraph = subgraph.to(device)
-            loss, loss_dict = model(subgraph, subgraph.ndata["feat"])
-
+            loss, loss_dict = model(subgraph, subgraph.ndata["x"])
+            data_idx = d_map[i]
+            loss = loss * records.weight[data_idx]
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            loss_list.append(loss.item())
+            loss_list[d_map[i]].append(loss.item())
 
         if scheduler is not None:
             scheduler.step()
-
-        train_loss = np.mean(loss_list)
-        epoch_iter.set_description(f"# Epoch {epoch} | train_loss: {train_loss:.4f}")
+        
+        for i, d in enumerate(args.pre_train_datasets):
+            this_loss = loss_list[i]
+            loss_np.append(np.mean(this_loss))
+            print(f"Dataset {args.pre_train_datasets[i]} | loss: {np.mean(this_loss):.4f}")
+        # epoch_iter.set_description(f"# Epoch {epoch} | train_loss: {train_loss:.4f}")
         if logger is not None:
             loss_dict["lr"] = get_current_lr(optimizer)
             logger.note(loss_dict, step=epoch)
         
-        if epoch == (max_epoch//2):
-            evaluete(model, (eval_train_loader, val_loader, test_loader), num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob, mute=True)
-    return model
+        test_accs, estp_accs, val_accs, estp_val_accs = multi_eval(
+            model, downstreams, device, lr_f, weight_decay_f, max_epoch_f, linear_prob, args)
+        for i, acc in enumerate(estp_val_accs):
+            print(f"Epoch: {epoch} | Dataset {args.pre_train_datasets[i]} | val_acc: {acc:.4f} | test_acc: {estp_accs[i]:.4f}")
+            records.update_metric(i, acc)
+        records.update_weight()
+        mean_val_acc = np.mean(estp_val_accs)
+        mean_test_acc = np.mean(estp_accs)
+
+        records.update_test_acc(mean_val_acc, mean_test_acc, estp_accs, estp_val_accs)
+    
+    best_test_acc = records.best_test_acc
+    return model, best_test_acc
 
 
 def main(args):
@@ -207,16 +121,11 @@ def main(args):
     logs = args.logging
     use_scheduler = args.scheduler
 
-    (
-        train_dataloader,
-        valid_dataloader, 
-        test_dataloader, 
-        eval_train_dataloader, 
-        num_features, 
-        num_classes
-    ) = load_inductive_dataset(dataset_name)
-    args.num_features = num_features
-
+    rep = torch.ones(len(args.pre_train_datasets))
+    graphs = load_pretrain_dataset(args.pre_train_datasets, rep, args)
+    train_segments, segment_data_map, feature_shape = load_train_segments(graphs, args)
+    args.num_features = feature_shape
+    test_g = load_downstream_dataset(args.pre_train_datasets, args)
     acc_list = []
     estp_acc_list = []
     for i, seed in enumerate(seeds):
@@ -242,33 +151,19 @@ def main(args):
             scheduler = None
 
         if not load_model:
-            model = pretrain(model, (train_dataloader, valid_dataloader, test_dataloader, eval_train_dataloader), optimizer, max_epoch, device, scheduler, num_classes, lr_f, weight_decay_f, max_epoch_f, linear_prob, logger)
+           model, best_test_acc = pretrain(model, train_segments, segment_data_map, test_g, optimizer, max_epoch, device, scheduler, lr_f, weight_decay_f, max_epoch_f, linear_prob, args, logger)
         model = model.cpu()
 
-        model = model.to(device)
-        model.eval()
-
-        if load_model:
-            logging.info("Loading Model ... ")
-            model.load_state_dict(torch.load("checkpoint.pt"))
         if save_model:
             logging.info("Saveing Model ...")
             torch.save(model.state_dict(), "checkpoint.pt")
         
-        model = model.to(device)
-        model.eval()
+        acc_list.append(best_test_acc)
 
-        final_acc, estp_acc = evaluete(model, (eval_train_dataloader, valid_dataloader, test_dataloader), num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob)
-        acc_list.append(final_acc)
-        estp_acc_list.append(estp_acc)
 
-        if logger is not None:
-            logger.finish()
-
-    final_acc, final_acc_std = np.mean(acc_list), np.std(acc_list)
-    estp_acc, es_acc_std = np.mean(estp_acc_list), np.std(estp_acc_list)
-    print(f"# final_f1: {final_acc:.4f}±{final_acc_std:.4f}")
-    print(f"# early-stopping_f1: {estp_acc:.4f}±{es_acc_std:.4f}")
+    for i in range(len(acc_list)):
+        total = [acc[i] for acc in acc_list]
+        print(f"Dataset {args.pre_train_datasets[i]} | Test Acc: {np.mean(total):.4f} | std: {np.std(total):.4f}")
 
 
 def load_best_configs(args, path):

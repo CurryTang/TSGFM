@@ -24,14 +24,49 @@ from utils import (binary_apr_func, binary_auc_multi_func, binary_single_auc_fun
 
 from ogb.nodeproppred import PygNodePropPredDataset
 
-name2dataset = {"arxiv": SingleGraphOFADataset, "Cora": SingleGraphOFADataset, "Pubmed": SingleGraphOFADataset,
-                "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset,
+name2dataset = {"arxiv": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
+                'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, }
 
 
 ########################################################################
 # Dataset split functions, split datasets into train/valid/test splits #
 ########################################################################
+
+def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, test_ratio):
+    """Generates training, validation, and testing masks as PyTorch tensors.
+
+    Args:
+        dataset_size: The total number of data points in the dataset.
+        train_ratio: The proportion of data to be used for training.
+        validation_ratio: The proportion of data to be used for validation.
+        test_ratio: The proportion of data to be used for testing.
+
+    Returns:
+        tuple: A tuple containing the training mask, validation mask, and testing mask.
+    """
+
+    if train_ratio + validation_ratio + test_ratio != 1:
+        raise ValueError("Ratios must sum up to 1")
+
+    num_train = int(dataset_size * train_ratio)
+    num_val = int(dataset_size * validation_ratio)
+    num_test = dataset_size - num_train - num_val
+
+    indices = np.arange(dataset_size)
+    np.random.shuffle(indices)
+
+    train_mask = torch.zeros(dataset_size, dtype=torch.bool)
+    train_mask[indices[:num_train]] = True
+
+    val_mask = torch.zeros(dataset_size, dtype=torch.bool)
+    val_mask[indices[num_train:num_train + num_val]] = True
+
+    test_mask = torch.zeros(dataset_size, dtype=torch.bool)
+    test_mask[indices[num_train + num_val:]] = True
+
+    return train_mask, val_mask, test_mask
+
 
 
 def ArxivSplitter(dataset):
@@ -47,11 +82,17 @@ def ArxivSplitter(dataset):
 def OGB_Splitter(dataset):
     if dataset.name == 'arxiv':
         ogb_data = PygNodePropPredDataset(name='ogbn-arxiv', root=dataset.data_dir)
-    ogb_splits = ogb_data.get_idx_split()
-    split = {}
-    split["train"] = ogb_splits['train']
-    split["valid"] = ogb_splits['valid']
-    split["test"] = ogb_splits['test']
+        ogb_splits = ogb_data.get_idx_split()
+        split = {}
+        split["train"] = ogb_splits['train']
+        split["valid"] = ogb_splits['valid']
+        split["test"] = ogb_splits['test']
+    elif dataset.name == 'arxiv23':
+        text_g = dataset.data
+        split = {}
+        split["train"] = torch.from_numpy(text_g.train_id).long()
+        split["valid"] = torch.from_numpy(text_g.val_id).long()
+        split["test"] = torch.from_numpy(text_g.test_id).long()
     return split
 
 
@@ -79,6 +120,15 @@ def CiteSplitter(dataset):
              "test": text_g.test_masks[0].nonzero(as_tuple=True)[0], }
     return split
 
+def CiteHigh(dataset):
+    text_g = dataset.data
+    num_nodes = text_g.x.size(0)
+    train_mask, val_mask, test_mask = generate_train_val_test_masks(num_nodes, 0.6, 0.2, 0.2)
+    split = {"train": train_mask.nonzero(as_tuple=True)[0],
+             "valid": val_mask.nonzero(as_tuple=True)[0],
+             "test": test_mask.nonzero(as_tuple=True)[0], }
+    return split
+
 
 def CiteFSSplitter(dataset):
     labels = torch.tensor(dataset.data.y) if not isinstance(dataset.data.y, torch.Tensor) else dataset.data.y
@@ -98,7 +148,7 @@ def CiteLinkSplitter(dataset):
     edges = text_g.edge_index
     edge_perm = torch.randperm(len(edges[0]))
     train_offset = int(len(edge_perm) * 0.7)
-    val_offset = int(len(edge_perm) * 0.1)
+    val_offset = int(len(edge_perm) * 0.8)
     edge_indices = {"train": edge_perm[:train_offset], "valid": edge_perm[train_offset:val_offset],
                     "test": edge_perm[val_offset:], }
     return edge_indices
@@ -452,6 +502,7 @@ class UnifiedTaskConstructor:
         dataset_name = dataset_config["dataset_name"]
         if dataset_name not in self.dataset:
             self.dataset[dataset_name] = name2dataset[dataset_name](dataset_name, root=self.root, encoder=self.encoder)
+            ## change to undirected graph
         return self.dataset[dataset_name]
 
     def get_data_split(self, dataset_config):
