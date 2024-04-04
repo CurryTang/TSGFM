@@ -18,6 +18,26 @@ arxiv23: &arxiv23
   <<: *E2E-node
   dataset: arxiv23
 
+bookhis: &bookhis
+  <<: *E2E-node
+  dataset: bookhis
+
+bookchild: &bookchild
+  <<: *E2E-node
+  dataset: bookchild
+
+elecomp: &elecomp
+  <<: *E2E-node
+  dataset: elecomp
+
+elephoto: &elephoto
+  <<: *E2E-node
+  dataset: elephoto
+
+sportsfit: &sportsfit
+  <<: *E2E-node
+  dataset: sportsfit
+  
 cora_node: &cora_node
   <<: *E2E-node
   dataset: cora_node
@@ -33,6 +53,14 @@ citeseer_node: &citeseer_node
 wikics: &wikics
   <<: *E2E-node
   dataset: wikics
+
+products: &products
+  <<: *E2E-node
+  dataset: products
+
+amazonratings: &amazonratings
+  <<: *E2E-node
+  dataset: amazonratings
 
 logic_arxiv:
   <<: *E2E-node

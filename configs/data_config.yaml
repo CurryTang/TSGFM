@@ -23,6 +23,55 @@ arxiv23: &arxiv23
   process_label_func: process_pth_label
   num_classes: 40
 
+bookhis: &bookhis
+  <<: *E2E-node
+  dataset_name: bookhis
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 12
+
+bookchild: &bookchild
+  <<: *E2E-node
+  dataset_name: bookchild
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 24
+
+elecomp: &elecomp
+  <<: *E2E-node
+  dataset_name: elecomp
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 10
+
+elephoto: &elephoto
+  <<: *E2E-node
+  dataset_name: elephoto
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 12
+
+sportsfit: &sportsfit
+  <<: *E2E-node
+  dataset_name: sportsfit
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 13
+
+amazonratings: &amazonratings
+  <<: *E2E-node
+  dataset_name: amazonratings
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 5
+
+products: &products
+  <<: *E2E-node
+  dataset_name: products
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_pth_label
+  num_classes: 39
+
 logic_arxiv: &logic_arxiv
   <<: *arxiv
   task_level: logic_e2e
@@ -40,7 +89,7 @@ cora_node: &cora_node
 citeseer_node: &citeseer_node
   <<: *E2E-node
   dataset_name: citeseer
-  dataset_splitter: CiteSplitter
+  dataset_splitter: OfficialSplitter
   process_label_func: process_int_label
   num_classes: 6
 
