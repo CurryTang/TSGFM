@@ -60,7 +60,7 @@ def get_data(dset):
         pt_path = download_google_url("1H_7Pmfg-8o3sLNflzWOHsgL5WG01i7B6", cur_path, "children.pt")
     else:
         pt_path = os.path.join(cur_path, "children.pt")
-    label_desc = pd.read_csv('./categories.csv')    
+    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))    
     dgl_data = dgl.load_graphs(pt_path)[0][0]
     pd_data = pd.read_csv(csv_path)
     edges = dgl_data.edges()

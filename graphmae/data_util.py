@@ -17,9 +17,10 @@ from ogb.nodeproppred import DglNodePropPredDataset
 from dgl.data.ppi import PPIDataset
 from dgl.dataloading import GraphDataLoader
 from sklearn.preprocessing import StandardScaler
-from torch_geometric.utils import index_to_mask
+from torch_geometric.utils import index_to_mask, mask_to_index
 from dgl.dataloading import DataLoader, ShaDowKHopSampler
-
+from torch_geometric.utils import degree, one_hot
+from dgl import RowFeatNormalizer
 
 GRAPH_DICT = {
     "cora": CoraGraphDataset,
@@ -30,9 +31,9 @@ GRAPH_DICT = {
 
 
 def preprocess(graph):
-    feat = graph.ndata["feat"]
+    feat = graph.ndata["x"]
     graph = dgl.to_bidirected(graph)
-    graph.ndata["feat"] = feat
+    graph.ndata["x"] = feat
 
     graph = graph.remove_self_loop().add_self_loop()
     graph.create_formats_()
@@ -86,7 +87,8 @@ def load_dataset(dataset_name):
 
 
 def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
-    AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23']
+    AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
+                          'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics']
     lowers = [x.lower() for x in AVAILABLE_DATASETS]
     if dataset.lower() not in lowers:
         raise ValueError(f"Unknow dataset: {dataset}.")
@@ -129,7 +131,7 @@ def load_pretrain_dataset(datasets, reptitions, args, is_link_pred = []):
         dgl_graph.ndata["x"] = feature
         dgl_graph.ndata['y'] = labels
         dgl_graph = dgl_graph.remove_self_loop().add_self_loop()
-        graphs.append({'g': dgl_graph, 'r': rep})
+        graphs.append({'g': dgl_graph, 'r': rep, 'name': dataset})
     return graphs
 
 
@@ -167,6 +169,11 @@ def load_train_segments(graphs, args):
             total_segs += 1
     return pre_train_loaders, segment_data_map, num_features
 
+def generate_one_hot_degree(edges, x, num_nodes, max_degree):
+    idx, x = edges[0], x
+    deg = degree(idx, num_nodes, dtype=torch.long)
+    deg = one_hot(deg, num_classes=max_degree + 1)
+    return deg
 
 
 def load_downstream_dataset(datasets, args):
@@ -179,7 +186,7 @@ def load_downstream_dataset(datasets, args):
         )
         dgl_graph.ndata["x"] = feature
         if args.drop_feat:
-            dgl_graph.ndata["x"] = torch.zeros_like(dgl_graph.ndata["x"])
+            dgl_graph.ndata["x"] = generate_one_hot_degree(dgl_graph.edges(), feature, feature.shape[0], 256)
         if isinstance(train_mask, list):
             train_mask = train_mask[0]
             val_mask = val_mask[0]
@@ -189,6 +196,9 @@ def load_downstream_dataset(datasets, args):
         dgl_graph.ndata['test_mask'] = test_mask
         dgl_graph.ndata['y'] = labels
         dgl_graph = dgl_graph.remove_self_loop().add_self_loop()
+        if args.drop_feat:
+            norm = RowFeatNormalizer(subtract_min=True,node_feat_names=['x'])
+            dgl_graph = norm(dgl_graph)
         datas.append(dgl_graph)
     return datas
         
@@ -291,6 +301,15 @@ def load_graph_classification_dataset(dataset_name, deg4feat=False):
     return dataset, (feature_dim, num_classes)
 
 
+def mask_to_split_idx(train_mask, val_mask, test_mask):
+    split_idx = {}
+    train_idx = mask_to_index(train_mask)
+    val_idx = mask_to_index(val_mask)
+    test_idx = mask_to_index(test_mask)
+    split_idx["train"] = train_idx
+    split_idx["valid"] = val_idx
+    split_idx["test"] = test_idx
+    return split_idx
 
 
 

@@ -9,6 +9,9 @@ import dgl
 import numpy as np
 
 
+import pandas as pd
+from collections import Counter
+
 def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, test_ratio):
     """Generates training, validation, and testing masks as PyTorch tensors.
 
@@ -45,57 +48,46 @@ def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, t
 
 
 
-def get_label_names(dataframe):
-    """Extracts label names in order of their first appearance."""
-    unique_labels = dataframe['label'].unique()  # Get unique label values
-    label_names = [dataframe.loc[dataframe['label'] == label, 'category'].iloc[0] for label in unique_labels]
-    return label_names
-
-
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
-    if not os.path.exists(os.path.join(cur_path, "history.csv")):
-        csv_path = download_google_url("1gpBLHC6dbcpy9Ug_cvaEEzEegnRJ9dsQ", cur_path, "history.csv")
+    if not os.path.exists(os.path.join(cur_path, "products.csv")):
+        csv_path = download_google_url("150GX-m32vOhcWnDytuIGe6yW7OXpKV4M", cur_path, "products.csv")
     else:
-        csv_path = os.path.join(cur_path, "history.csv")
-    if not os.path.exists(os.path.join(cur_path, "history.pt")):
-        pt_path = download_google_url("14qGkKaRAEER-huyPEJOPl9NuKtpYIInF", cur_path, "history.pt")
+        csv_path = os.path.join(cur_path, "products.csv")
+    if not os.path.exists(os.path.join(cur_path, "products.pt")):
+        pt_path = download_google_url("1b3iLs88Do1mQ1wrZ3OT8d5MjSs3kr8LX", cur_path, "products.pt")
     else:
-        pt_path = os.path.join(cur_path, "history.pt")
-    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))    
-    dgl_data = dgl.load_graphs(pt_path)[0][0]
+        pt_path = os.path.join(cur_path, "products.pt")
+    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))       
+    # dgl_data = dgl.load_graphs(pt_path)[0][0]
     pd_data = pd.read_csv(csv_path)
-    edges = dgl_data.edges()
-    edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
-    pyg_data = pyg.data.Data(edge_index=edge_index, y=dgl_data.ndata['label'])
-    dataset_size = pyg_data.y.shape[0]
-    train_mask, val_mask, test_mask = generate_train_val_test_masks(dataset_size, 0.6, 0.2, 0.2)
+    # edges = dgl_data.edges()
+    pyg_data = torch.load(pt_path)
+    dataset_size = pyg_data.x.shape[0]
+    train_mask, val_mask, test_mask = generate_train_val_test_masks(dataset_size, 0.08, 0.02, 0.9)
     pyg_data.train_mask = train_mask
     pyg_data.val_mask = val_mask
     pyg_data.test_mask = test_mask
     ## feat_node_texts
-    feat_node_texts = pd_data['text'].tolist()
-    feat_node_texts = ['feature node. Book' + t for t in feat_node_texts]
+    # feat_node_texts = pd_data['text'].tolist()
+    feat_node_texts = pyg_data.raw_texts
+    feat_node_texts = ['feature node. Product Description' + t for t in feat_node_texts]
     ## class_node_texts
     class_node_texts = [
-        "prompt node. literature category and description: "
+        "prompt node. Product category and description: "
         + line['name']
         + "."
         + line['description']
         for _, line in label_desc.iterrows()
     ]
     feat_edge_texts = ["feature edge. these two items are frequently co-purchased or co-viewed."] 
-    noi_node_texts = ["prompt node. node classification of literature category, which country's history is it about?"]
+    noi_node_texts = ["prompt node. node classification of product category"]
     prompt_edge_texts = ["prompt edge.", "prompt edge. edge for query graph that is our target",
         "prompt edge. edge for support graph that is an example", ]
     prompt_text_map = {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                                     "class_node_text_feat": ["class_node_text_feat",
                                                              torch.arange(len(class_node_texts))],
-                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
-                       "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                   "class_node_text_feat": ["class_node_text_feat",
-                                                            torch.arange(len(class_node_texts))],
-                                   "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
+                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}}
     return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
         prompt_edge_texts, ], prompt_text_map,)
 

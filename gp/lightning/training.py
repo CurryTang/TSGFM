@@ -17,7 +17,7 @@ def lightning_fit(
     profiler=None,
     cktp_prefix="",
     load_best=True,
-    prog_freq=20,
+    prog_freq=1,
     test_rep=1,
     save_model=True,
     prog_bar=True,
@@ -71,7 +71,7 @@ def lightning_fit(
         val_mean = np.mean(val_res[met])
         val_std = np.std(val_res[met])
         print("{}:{:f}±{:f}".format(met, val_mean, val_std))
-
+        
     target_val_mean = np.mean(val_res[metrics.val_metric])
     target_val_std = np.std(val_res[metrics.val_metric])
 

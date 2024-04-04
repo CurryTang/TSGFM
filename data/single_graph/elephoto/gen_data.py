@@ -63,30 +63,30 @@ def get_label_names(dataframe):
 
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
-    if not os.path.exists(os.path.join(cur_path, "elecomp.csv")):
-        csv_path = download_google_url("1vwaeZqTogyfxjiPW6-sKNY_Pwg0GPylw", cur_path, "elecomp.csv")
+    if not os.path.exists(os.path.join(cur_path, "elephoto.csv")):
+        csv_path = download_google_url("1HhR-XIga6x00r1eWqBl_y5oHhIKnBFtw", cur_path, "elephoto.csv")
     else:
-        csv_path = os.path.join(cur_path, "elecomp.csv")
-    if not os.path.exists(os.path.join(cur_path, "elecomp.pt")):
-        pt_path = download_google_url("1zyeGnuYTVjEdshfE_xl07VPb8EODmo21", cur_path, "elecomp.pt")
+        csv_path = os.path.join(cur_path, "elephoto.csv")
+    if not os.path.exists(os.path.join(cur_path, "elephoto.pt")):
+        pt_path = download_google_url("1PeXGzCrITyg3ItuFZL45VqoNtget4cdL", cur_path, "elephoto.pt")
     else:
-        pt_path = os.path.join(cur_path, "elecomp.pt")
-    label_desc = pd.read_csv('./categories.csv')    
+        pt_path = os.path.join(cur_path, "elephoto.pt")
+    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))        
     dgl_data = dgl.load_graphs(pt_path)[0][0]
     pd_data = pd.read_csv(csv_path)
     edges = dgl_data.edges()
     edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
     pyg_data = pyg.data.Data(edge_index=edge_index, y=dgl_data.ndata['label'])
-    train_mask, val_mask, test_mask = generate_masks_by_year(pd_data['year'].to_list(), 0.72, 0.17, 0.11)
+    train_mask, val_mask, test_mask = generate_masks_by_year(dgl_data.ndata['year'].tolist(), 0.6, 0.2, 0.2)
     pyg_data.train_mask = train_mask
     pyg_data.val_mask = val_mask
     pyg_data.test_mask = test_mask
     ## feat_node_texts
     feat_node_texts = pd_data['text'].tolist()
-    feat_node_texts = ['feature node. Review' + t for t in feat_node_texts]
+    feat_node_texts = ['feature node. Review: ' + t for t in feat_node_texts]
     ## class_node_texts
     class_node_texts = [
-        "prompt node. Computer product category and description: "
+        "prompt node. Photo product category and description: "
         + line['name']
         + "."
         + line['description']
@@ -106,4 +106,3 @@ def get_data(dset):
                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
     return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
         prompt_edge_texts, ], prompt_text_map,)
-

@@ -8,7 +8,6 @@ from torch_geometric.data.download import download_google_url, download_url
 import dgl
 import numpy as np
 
-
 def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, test_ratio):
     """Generates training, validation, and testing masks as PyTorch tensors.
 
@@ -43,49 +42,34 @@ def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, t
 
     return train_mask, val_mask, test_mask
 
-
-
-def get_label_names(dataframe):
-    """Extracts label names in order of their first appearance."""
-    unique_labels = dataframe['label'].unique()  # Get unique label values
-    label_names = [dataframe.loc[dataframe['label'] == label, 'category'].iloc[0] for label in unique_labels]
-    return label_names
-
-
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
-    if not os.path.exists(os.path.join(cur_path, "history.csv")):
-        csv_path = download_google_url("1gpBLHC6dbcpy9Ug_cvaEEzEegnRJ9dsQ", cur_path, "history.csv")
+    if not os.path.exists(os.path.join(cur_path, "ratings.pt")):
+        pt_path = download_google_url("1-LyPmaOxSTUPD2J0a_2NUk7-PIQi177_", cur_path, "ratings.pt")
     else:
-        csv_path = os.path.join(cur_path, "history.csv")
-    if not os.path.exists(os.path.join(cur_path, "history.pt")):
-        pt_path = download_google_url("14qGkKaRAEER-huyPEJOPl9NuKtpYIInF", cur_path, "history.pt")
-    else:
-        pt_path = os.path.join(cur_path, "history.pt")
-    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))    
-    dgl_data = dgl.load_graphs(pt_path)[0][0]
-    pd_data = pd.read_csv(csv_path)
-    edges = dgl_data.edges()
-    edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
-    pyg_data = pyg.data.Data(edge_index=edge_index, y=dgl_data.ndata['label'])
+        pt_path = os.path.join(cur_path, "ratings.pt")
+    label_desc = [
+        "5 score awesome ratings, users are extremely satisfied with the products.",
+        "4.5 score good ratings, users are satisfied with the products, but there's space to be even better.",
+        "4 score good ratings, users like the products but there's still much space to be better.",
+        "3.5 score average ratings, users are neutral about the products.",
+        "0-3 score bad ratings, users think the products are bad."
+    ]    
+    pyg_data = torch.load(pt_path)
     dataset_size = pyg_data.y.shape[0]
-    train_mask, val_mask, test_mask = generate_train_val_test_masks(dataset_size, 0.6, 0.2, 0.2)
+    train_mask, val_mask, test_mask = generate_train_val_test_masks(dataset_size, 0.5, 0.25, 0.25)
     pyg_data.train_mask = train_mask
     pyg_data.val_mask = val_mask
     pyg_data.test_mask = test_mask
     ## feat_node_texts
-    feat_node_texts = pd_data['text'].tolist()
-    feat_node_texts = ['feature node. Book' + t for t in feat_node_texts]
+    feat_node_texts = pyg_data.raw_texts
+    feat_node_texts = ['feature node. Name of the products' + t for t in feat_node_texts]
     ## class_node_texts
     class_node_texts = [
-        "prompt node. literature category and description: "
-        + line['name']
-        + "."
-        + line['description']
-        for _, line in label_desc.iterrows()
+        "prompt node. Score of the products: " + x for x in label_desc 
     ]
     feat_edge_texts = ["feature edge. these two items are frequently co-purchased or co-viewed."] 
-    noi_node_texts = ["prompt node. node classification of literature category, which country's history is it about?"]
+    noi_node_texts = ["prompt node. node classification of the score of the products?"]
     prompt_edge_texts = ["prompt edge.", "prompt edge. edge for query graph that is our target",
         "prompt edge. edge for support graph that is an example", ]
     prompt_text_map = {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],

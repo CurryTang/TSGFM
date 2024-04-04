@@ -76,6 +76,11 @@ class GCN(nn.Module):
             return self.head(h), hidden_list
         else:
             return self.head(h)
+        
+    def reset_parameters(self):
+    #     # kaiming_uniform
+        for m in self.gcn_layers:
+            m.reset_parameters()
 
     def reset_classifier(self, num_classes):
         self.head = nn.Linear(self.out_dim, num_classes)

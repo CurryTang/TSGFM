@@ -14,9 +14,14 @@ from torch import optim as optim
 from tensorboardX import SummaryWriter
 from graphmae.data_util import load_downstream_dataset
 from copy import deepcopy
+import psutil
+import wandb
+
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+def get_current_lr(optimizer):
+    return optimizer.state_dict()["param_groups"][0]["lr"]
 
 def accuracy(y_pred, y_true):
     y_true = y_true.squeeze().long()
@@ -43,11 +48,12 @@ def build_args():
     parser = argparse.ArgumentParser(description="GAT")
     parser.add_argument("--seeds", type=int, nargs="+", default=[0])
     parser.add_argument("--dataset", type=str, default="cora")
+    parser.add_argument("--method", type=str, default="graphmae")
     parser.add_argument('--tag_data_path', type=str, default="./cache_data_minilm")
     parser.add_argument("--pre_train_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed", "arxiv", "arxiv23"])
     parser.add_argument("--downstream_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed"])
     parser.add_argument('--initial_weight', type=float, nargs='+', default = [1.,1.,1.,1.,1.])
-    parser.add_argument('--min_ratio', type=float, default = [1.,1.,1.,1.,1.])
+    parser.add_argument('--min_ratio', type=float, nargs='+', default = [1.,1.,1.,1.,1.])
     parser.add_argument('--rep', type=list, default=[0,0,0])
     parser.add_argument("--device", type=int, default=-1)
     parser.add_argument("--max_epoch", type=int, default=200,
@@ -60,8 +66,10 @@ def build_args():
                         help="number of output attention heads")
     parser.add_argument("--num_layers", type=int, default=2,
                         help="number of hidden layers")
-    parser.add_argument("--num_hidden", type=int, default=256,
+    parser.add_argument("--num_hidden", type=int, default=512,
                         help="number of hidden units")
+    parser.add_argument("--num_out", type=int, default=-1, help="only for bgrl")
+    parser.add_argument("--predictor_hidden_size", type=int, default=128, help="only for bgrl")
     parser.add_argument("--residual", action="store_true", default=False,
                         help="use residual connection")
     parser.add_argument("--in_drop", type=float, default=.2,
@@ -69,7 +77,7 @@ def build_args():
     parser.add_argument("--attn_drop", type=float, default=.1,
                         help="attention dropout")
     parser.add_argument("--norm", type=str, default=None)
-    parser.add_argument("--lr", type=float, default=0.005,
+    parser.add_argument("--lr", type=float, default=0.001,
                         help="learning rate")
     parser.add_argument("--weight_decay", type=float, default=5e-4,
                         help="weight decay")
@@ -78,6 +86,10 @@ def build_args():
     parser.add_argument("--activation", type=str, default="prelu")
     parser.add_argument("--mask_rate", type=float, default=0.5)
     parser.add_argument("--drop_edge_rate", type=float, default=0.0)
+    parser.add_argument("--drop_edge_rate_f", type=float, default=0.0)
+    parser.add_argument("--drop_feat_rate", type=float, default=0.0)
+    parser.add_argument("--drop_feat_rate_2", type=float, default=0.0)
+    parser.add_argument("--drop_edge_rate_2", type=float, default=0.0)
     parser.add_argument("--replace_rate", type=float, default=0.0)
 
     parser.add_argument("--encoder", type=str, default="gat")
@@ -93,7 +105,7 @@ def build_args():
     
     parser.add_argument("--load_model", action="store_true")
     parser.add_argument("--save_model", action="store_true")
-    parser.add_argument("--use_cfg", action="store_true")
+    parser.add_argument("--use_cfg", type=str, default="", help="use the config file")
     parser.add_argument("--logging", action="store_true")
     parser.add_argument("--scheduler", action="store_true", default=False)
     parser.add_argument("--concat_hidden", action="store_true", default=False)
@@ -106,9 +118,35 @@ def build_args():
     # for graph classification
     parser.add_argument("--pooling", type=str, default="mean")
     parser.add_argument("--deg4feat", action="store_true", default=False, help="use node degree as input feature")
-    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--partition_size", type=int, default=5000)
     parser.add_argument("--halo_hop", type=int, default=1)
+
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--batch_size_f", type=int, default=128)
+    parser.add_argument("--sampling_method", type=str, default="saint", help="sampling method, `lc` or `saint`")
+
+    parser.add_argument("--label_rate", type=float, default=1.0)
+    parser.add_argument("--ego_graph_file_path", type=str, default=None)
+    parser.add_argument("--data_dir", type=str, default="data")
+
+    ## specific to graphmae2
+    parser.add_argument("--lam", type=float, default=1.0)
+    parser.add_argument("--full_graph_forward", action="store_true", default=False)
+    parser.add_argument("--delayed_ema_epoch", type=int, default=0)
+    parser.add_argument("--momentum", type=float, default=0.996)
+    parser.add_argument("--mask_method", type=str, default="random")
+    parser.add_argument("--remask_method", type=str, default="random")
+    parser.add_argument("--num_dec_layers", type=int, default=1)
+    parser.add_argument("--num_remasking", type=int, default=3)
+    parser.add_argument("--remask_rate", type=float, default=0.5)
+    parser.add_argument("--mask_type", type=str, default="mask")
+    parser.add_argument("--no_pretrain", action="store_true")
+
+    ## for graphsaint
+    parser.add_argument("--sg_size", type=int, default=3000)
+    parser.add_argument("--num_iters", type=int, default=3)
+
+
     args = parser.parse_args()
     return args
 
@@ -137,6 +175,10 @@ def create_norm(name):
         return partial(NormLayer, norm_type="groupnorm")
     else:
         return nn.Identity
+
+def show_occupied_memory():
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / 1024**2
 
 
 def create_optimizer(opt, model, lr, weight_decay, get_num_layer=None, get_layer_scale=None):
@@ -197,22 +239,17 @@ def drop_edge(graph, drop_rate, return_edges=False):
     return ng
 
 
-def load_best_configs(args, path):
-    with open(path, "r") as f:
+def load_best_configs(args):
+    config_path = args.use_cfg
+    with open(config_path, "r") as f:
         configs = yaml.load(f, yaml.FullLoader)
-
-    if args.dataset not in configs:
-        logging.info("Best args not found")
-        return args
-
-    logging.info("Using best configs")
-    configs = configs[args.dataset]
 
     for k, v in configs.items():
         if "lr" in k or "weight_decay" in k:
             v = float(v)
         setattr(args, k, v)
-    print("------ Use best configs ------")
+    logging.info(f"----- Using best configs from {config_path} -----")
+
     return args
 
 
@@ -375,3 +412,27 @@ class Records(object):
                 self.weight[i] = max(self.min_ratio[i],
                                                self.weight[i] / 2) 
             self.records[i].append(cur)
+
+
+class WandbLogger(object):
+    def __init__(self, log_path, project, args):
+        self.log_path = log_path
+        self.project = project
+        self.args = args
+        self.last_step = 0
+        self.project = project
+        self.start()
+
+    def start(self):
+        self.run = wandb.init(config=self.args, project=self.project)
+
+    def log(self, metrics, step=None):
+        if not hasattr(self, "run"):
+            self.start()
+        if step is None:
+            step = self.last_step
+        self.run.log(metrics)
+        self.last_step = step
+
+    def finish(self):
+        self.run.finish()
