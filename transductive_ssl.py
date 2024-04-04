@@ -12,25 +12,26 @@ from graphmae.utils import (
     load_best_configs,
 )
 from graphmae.data_util import load_downstream_dataset
-from graphmae.evaluation import node_classification_evaluation
 from graphmae.models import build_model
+from graphmae.evaluation import linear_probing_full_batch
 
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
-
 
 def pretrain(model, graph, feat, optimizer, max_epoch, device, scheduler, num_classes, lr_f, weight_decay_f, max_epoch_f, linear_prob, logger=None):
     logging.info("start training..")
     graph = graph.to(device)
     x = feat.to(device)
 
+    target_nodes = torch.arange(x.shape[0], device=x.device, dtype=torch.long)
     epoch_iter = tqdm(range(max_epoch))
 
     for epoch in epoch_iter:
         model.train()
 
-        loss, loss_dict = model(graph, x)
+        loss = model(graph, x, targets=target_nodes)
 
+        loss_dict = {"loss": loss.item()}
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -42,10 +43,9 @@ def pretrain(model, graph, feat, optimizer, max_epoch, device, scheduler, num_cl
             loss_dict["lr"] = get_current_lr(optimizer)
             logger.note(loss_dict, step=epoch)
 
-        if (epoch + 1) % 5 == 0:
-            node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob, mute=True)
+        if (epoch + 1) % 200 == 0:
+            linear_probing_full_batch(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob, mute=True)
 
-    # return best_model
     return model
 
 
@@ -70,11 +70,9 @@ def main(args):
     weight_decay_f = args.weight_decay_f
     linear_prob = args.linear_prob
     load_model = args.load_model
-    save_model = args.save_model
     logs = args.logging
     use_scheduler = args.scheduler
 
-    # graph, (num_features, num_classes) = load_dataset(dataset_name)
     graphs = load_downstream_dataset([args.dataset], args)
     G = graphs[0]
     args.num_features = G.ndata['x'].shape[1]
@@ -97,8 +95,6 @@ def main(args):
         if use_scheduler:
             logging.info("Use schedular")
             scheduler = lambda epoch :( 1 + np.cos((epoch) * np.pi / max_epoch) ) * 0.5
-            # scheduler = lambda epoch: epoch / warmup_steps if epoch < warmup_steps \
-                    # else ( 1 + np.cos((epoch - warmup_steps) * np.pi / (max_epoch - warmup_steps))) * 0.5
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=scheduler)
         else:
             scheduler = None
@@ -111,14 +107,11 @@ def main(args):
         if load_model:
             logging.info("Loading Model ... ")
             model.load_state_dict(torch.load("checkpoint.pt"))
-        if save_model:
-            logging.info("Saveing Model ...")
-            torch.save(model.state_dict(), "checkpoint.pt")
         
         model = model.to(device)
         model.eval()
 
-        final_acc, estp_acc = node_classification_evaluation(model, G, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob)
+        final_acc, estp_acc = linear_probing_full_batch(model, G, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob)
         acc_list.append(final_acc)
         estp_acc_list.append(estp_acc)
 
@@ -129,13 +122,15 @@ def main(args):
     estp_acc, estp_acc_std = np.mean(estp_acc_list), np.std(estp_acc_list)
     print(f"# final_acc: {final_acc:.4f}±{final_acc_std:.4f}")
     print(f"# early-stopping_acc: {estp_acc:.4f}±{estp_acc_std:.4f}")
-    return estp_acc, estp_acc_std
+
+    return estp_acc, estp_acc_std   
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == "__main__":
     args = build_args()
-    if args.use_cfg:
-        args = load_best_configs(args, "/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/configs.yaml")
-    assert len(args.pre_train_datasets) == len(args.min_ratio) == len(args.initial_weight)
+    if args.use_cfg != "":
+        args = load_best_configs(args)
     print(args)
     main(args)
+

@@ -25,8 +25,8 @@ from utils import (binary_apr_func, binary_auc_multi_func, binary_single_auc_fun
 from ogb.nodeproppred import PygNodePropPredDataset
 
 name2dataset = {"arxiv": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
-                'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset,
-                "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, }
+                'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset, "bookchild": SingleGraphOFADataset, "amazonratings": SingleGraphOFADataset, "bookhis": SingleGraphOFADataset, "elecomp": SingleGraphOFADataset, "elephoto": SingleGraphOFADataset, "sportsfit": SingleGraphOFADataset, 'products': SingleGraphOFADataset,
+                "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset}
 
 
 ########################################################################
@@ -118,6 +118,13 @@ def CiteSplitter(dataset):
     split = {"train": text_g.train_masks[0].nonzero(as_tuple=True)[0],
              "valid": text_g.val_masks[0].nonzero(as_tuple=True)[0],
              "test": text_g.test_masks[0].nonzero(as_tuple=True)[0], }
+    return split
+
+def OfficialSplitter(dataset):
+    text_g = dataset.data
+    split = {"train": text_g.train_mask.nonzero(as_tuple=True)[0],
+             "valid": text_g.val_mask.nonzero(as_tuple=True)[0],
+             "test": text_g.test_mask.nonzero(as_tuple=True)[0], }
     return split
 
 def CiteHigh(dataset):

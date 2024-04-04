@@ -307,7 +307,7 @@ def main(args):
 # Press the green button in the gutter to run the script.
 if __name__ == "__main__":
     args = build_args()
-    if args.use_cfg:
-        args = load_best_configs(args, "/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/configs.yaml")
+    if args.use_cfg != "":
+        args = load_best_configs(args, args.use_cfg)
     print(args)
     main(args)

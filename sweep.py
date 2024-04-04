@@ -52,17 +52,22 @@ if __name__ == "__main__":
                 "num_out_heads": {"values": [1]},
                 "activation": {"values": ["relu", "prelu", "elu"]},
                 "in_drop": {"values": [0.0, 0.2, 0.5]},
-                "attn_drop": {"values": [0.0, 0.2, 0.5]},
+                "attn_drop": {"values": [0.0, 0.1, 0.2, 0.5]},
                 "lr": {"values": [0.001, 0.005, 0.01]},
-                "weight_decay": {"values": [0.0, 0.001, 0.005]},
+                "weight_decay": {"values": [0.0, 1e-4, 2e-4, 0.05]},
+                "weight_decay_f": {"values": [0.0, 1e-4, 2e-4]},
                 "residual": {"values": [True, False]},
-                "num_layers": {"values": [2, 3]},
+                "num_layers": {"values": [2, 3, 4]},
                 "scheduler": {"values": [True, False]},
                 "norm": {"values": ["layernorm", "batchnorm", None]},
                 'replace_rate': {"values": [0.0, 0.1, 0.2]},
                 'mask_rate': {"values": [0.5, 0.75]},
                 'drop_edge_rate': {"values": [0.0, 0.5]},
-                'alpha_l': {"values": [1, 2, 3]}
+                'alpha_l': {"values": [2, 3, 4, 5]},
+                'lr_f': {"values": [0.001, 0.005, 0.025]},
+                'remask_method': {"values": ['fixed', 'random']},
+                'lam': {"values": [0.1, 1,  5, 10]},
+                'momentum': {'values': [0., 0.96, 1.]},
             }
         }
 
