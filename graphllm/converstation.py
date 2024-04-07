@@ -280,6 +280,18 @@ conv_llava_v1_mmtag = Conversation(
     version="v1_mmtag",
 )
 
+
+conv_mistral_instruct = Conversation(
+    system="",
+    roles=("USER", "ASSISTANT"),
+    version="llama_v2",
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.LLAMA_2,
+    sep="",
+    sep2="</s>",
+)
+
 default_conversation = conv_vicuna_v0
 conv_templates = {
     "default": conv_vicuna_v0,
@@ -287,6 +299,7 @@ conv_templates = {
     "v1": conv_vicuna_v1,
     "vicuna_v1": conv_vicuna_v1,
     "llama_2": conv_llama_2,
+    "mistral_instruct": conv_mistral_instruct,
 
     "plain": conv_llava_plain,
     "v0_plain": conv_llava_plain,

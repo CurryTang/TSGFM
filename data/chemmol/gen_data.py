@@ -11,8 +11,9 @@ import pandas as pd
 from data.chemmol.gen_raw_graph import smiles2graph
 from utils import get_label_texts
 
-NAME_TO_SPLIT = {"chemblpre": "chembl_pretraining", "chempcba": "pcba", "chemhiv": "hiv"}
-
+NAME_TO_SPLIT = {"chemblpre": "chembl_pretraining", "chempcba": "pcba", "chemhiv": "hiv", 
+                 "tox21": "tox21", "clintox": "clintox", "sider": "sider", "muv": "muv",
+                 "bace": "bace", "bbbp": "bbbp", "toxcast": "toxcast"}
 
 def load_prompt_json(name):
     if name == "chemblpre":

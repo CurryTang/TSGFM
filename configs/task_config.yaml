@@ -235,6 +235,70 @@ chemhiv: &chemhiv
   <<: *E2E-graph
   dataset: chemhiv
 
+tox21: &tox21
+  <<: *E2E-graph
+  train: tox21
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: tox21
+    - stage: valid
+      split_name: valid
+      dataset: tox21_eval
+    - stage: test
+      split_name: test
+      dataset: tox21_eval
+    - stage: test
+      split_name: train
+      dataset: tox21_eval
+
+
+
+muv: &muv
+  <<: *E2E-graph
+  train: muv
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: muv
+    - stage: valid
+      split_name: valid
+      dataset: muv_eval
+    - stage: test
+      split_name: test
+      dataset: muv_eval
+    - stage: test
+      split_name: train
+      dataset: muv_eval
+
+
+toxcast: &toxcast
+  <<: *E2E-graph
+  train: toxcast
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: toxcast
+    - stage: valid
+      split_name: valid
+      dataset: toxcast_eval
+    - stage: test
+      split_name: test
+      dataset: toxcast_eval
+    - stage: test
+      split_name: train
+      dataset: toxcast_eval
+
+bace: &bace
+  <<: *E2E-graph
+  dataset: bace
+
+bbbp: &bbbp
+  <<: *E2E-graph
+  dataset: bbbp
+
+
+
 
 LR-node: &LR-node
   eval_pool_mode: mean

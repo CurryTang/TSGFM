@@ -9,33 +9,35 @@ function run_repeats {
     # e.g. 'name_tag test01 gnn.layer_type gcnconv'
 
     main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python transductive_ssl.py \
-	--device $device \
+	--device 0 \
 	--dataset $dataset \
+	--mask_method "random" \
+    --remask_method "fixed" \
 	--mask_rate 0.5 \
-	--encoder "gat" \
-	--decoder "gat" \
 	--in_drop 0.2 \
 	--attn_drop 0.1 \
 	--num_layers 2 \
-	--num_hidden 512 \
+	--num_dec_layers 1 \
+	--num_hidden 256 \
 	--num_heads 4 \
-	--max_epoch 300 \
-	--max_epoch_f 200 \
+	--num_out_heads 1 \
+	--encoder "gat" \
+	--decoder "gat" \
+	--max_epoch 1000 \
+	--max_epoch_f 300 \
 	--lr 0.001 \
-	--weight_decay 0 \
-	--lr_f 0.01 \
+	--weight_decay 0.04 \
+	--lr_f 0.005 \
 	--weight_decay_f 1e-4 \
-	--activation prelu \
-	--optimizer adam \
-	--drop_edge_rate 0.0 \
+	--activation "prelu" \
 	--loss_fn "sce" \
-	--seeds 0 1 2 \
-	--replace_rate 0.05 \
 	--alpha_l 3 \
-	--linear_prob \
 	--scheduler \
-	--use_cfg"
-    common_params="${cfg_overrides}"
+	--seeds 0 \
+	--lam 0.5 \
+	--linear_prob \
+	"    
+	common_params="${cfg_overrides}"
 
     echo "Run program: ${main}"
 

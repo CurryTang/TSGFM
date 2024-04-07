@@ -19,32 +19,31 @@ import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
 
-from transformers import AutoConfig, AutoModelForCausalLM, \
-                         LlamaConfig, LlamaModel, LlamaForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, MistralConfig, MistralForCausalLM, MistralModel
 
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
-from ..llaga_arch import LlagaMetaModel, LlagaMetaForCausalLM
-from utils.constants import IGNORE_INDEX
+from graphllm.llaga_arch import LlagaMetaModel, LlagaMetaForCausalLM
+from graphllm.constants import IGNORE_INDEX
 
 
-class LlagaConfig(LlamaConfig):
+class LlagaConfig(MistralConfig):
     model_type = "llaga"
 
 
-class LlagaLlamaModel(LlagaMetaModel, LlamaModel):
+class LlagaMistralModel(LlagaMetaModel, MistralModel):
     config_class = LlagaConfig
 
-    def __init__(self, config: LlamaConfig):
-        super(LlagaLlamaModel, self).__init__(config)
+    def __init__(self, config: MistralConfig):
+        super(LlagaMistralModel, self).__init__(config)
 
 
-class LlagaLlamaForCausalLM(LlamaForCausalLM, LlagaMetaForCausalLM):
+class LlagaMistralForCausalLM(MistralForCausalLM, LlagaMetaForCausalLM):
     config_class = LlagaConfig
 
     def __init__(self, config):
-        super(LlamaForCausalLM, self).__init__(config)
-        self.model = LlagaLlamaModel(config)
+        super(MistralForCausalLM, self).__init__(config)
+        self.model = LlagaMistralModel(config)
 
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -141,4 +140,4 @@ class LlagaLlamaForCausalLM(LlamaForCausalLM, LlagaMetaForCausalLM):
         return model_inputs
 
 AutoConfig.register("llaga", LlagaConfig)
-AutoModelForCausalLM.register(LlagaConfig, LlagaLlamaForCausalLM)
+AutoModelForCausalLM.register(LlagaConfig, LlagaMistralForCausalLM)

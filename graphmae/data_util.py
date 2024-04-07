@@ -21,6 +21,8 @@ from torch_geometric.utils import index_to_mask, mask_to_index
 from dgl.dataloading import DataLoader, ShaDowKHopSampler
 from torch_geometric.utils import degree, one_hot
 from dgl import RowFeatNormalizer
+import torch_geometric
+
 
 GRAPH_DICT = {
     "cora": CoraGraphDataset,
@@ -174,6 +176,22 @@ def generate_one_hot_degree(edges, x, num_nodes, max_degree):
     deg = degree(idx, num_nodes, dtype=torch.long)
     deg = one_hot(deg, num_classes=max_degree + 1)
     return deg
+
+
+
+def load_downstream_dataset_pyg(args):
+    datas = []
+    for dataset in args.pre_train_datasets:
+        feature, edge_index, labels, train_mask, val_mask, test_mask = load_one_tag_dataset(dataset, args.tag_data_path)
+        edge_index, _ = torch_geometric.utils.add_remaining_self_loops(edge_index, None)
+        pyg_graph =  torch_geometric.data.Data(x=feature, edge_index=edge_index, y=labels)
+        pyg_graph.train_mask = train_mask
+        pyg_graph.val_mask = val_mask
+        pyg_graph.test_mask = test_mask
+        datas.append(pyg_graph)
+    return datas
+        
+        
 
 
 def load_downstream_dataset(datasets, args):

@@ -22,7 +22,7 @@ import re
 # from .multimodal_encoder.builder import build_vision_tower
 # from .multimodal_projector.builder import build_vision_projector
 
-from utils.constants import IGNORE_INDEX, GRAPH_TOKEN_INDEX, DEFAULT_GRAPH_START_TOKEN, DEFAULT_GRAPH_END_TOKEN, DEFAULT_GRAPH_PAD_ID
+from graphllm.constants import IGNORE_INDEX, GRAPH_TOKEN_INDEX, DEFAULT_GRAPH_START_TOKEN, DEFAULT_GRAPH_END_TOKEN, DEFAULT_GRAPH_PAD_ID
 
 
 def build_graph_projector(config, delay_load=False, **kwargs):
@@ -355,10 +355,6 @@ class LlagaMetaForCausalLM(ABC):
 
             attention_mask = torch.stack(new_attention_masks, dim=0)
             assert attention_mask.shape == new_input_embeds.shape[:2]
-            # if attention_mask is not None:
-            #     new_attn_mask_pad_left = torch.full((attention_mask.shape[0], new_input_embeds.shape[1] - input_ids.shape[1]), True, dtype=attention_mask.dtype, device=attention_mask.device)
-            #     attention_mask = torch.cat((new_attn_mask_pad_left, attention_mask), dim=1)
-            #     assert attention_mask.shape == new_input_embeds.shape[:2]
 
         return None, attention_mask, past_key_values, new_input_embeds, new_labels
 

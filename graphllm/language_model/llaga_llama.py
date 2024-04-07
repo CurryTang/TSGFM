@@ -24,8 +24,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, \
 
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
-from ..llaga_arch import LlagaMetaModel, LlagaMetaForCausalLM
-from utils.constants import IGNORE_INDEX
+from graphllm.llaga_arch import LlagaMetaModel, LlagaMetaForCausalLM
+from graphllm.constants import IGNORE_INDEX
 
 
 class LlagaConfig(LlamaConfig):

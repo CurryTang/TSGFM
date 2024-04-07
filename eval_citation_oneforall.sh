@@ -27,7 +27,7 @@ select yn in "Yes" "No"; do
     esac
 done
 
-slurm_directive="--time=0-2:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
+slurm_directive="--time=0-4:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
 # run_repeats "--override /mnt/home/chenzh85/graphlang/PyGFM/MyOFA/eval_ctation_oneforall.yaml"
 run_repeats "--override /mnt/home/chenzh85/graphlang/PyGFM/MyOFA/eval_ctation_oneforall.yaml d_multiple 1,1,1,1,1 d_min_ratio 1,1,1,1,1"
 # run_repeats "--override /mnt/home/chenzh85/graphlang/PyGFM/MyOFA/eval_ctation_oneforall.yaml d_multiple 2,1.5,2.5,0.7,1.0 d_min_ratio 1,1,2,0.2,0.3"

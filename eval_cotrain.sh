@@ -7,7 +7,7 @@ function run_repeats {
     cotrain=$2
     cfg_overrides=$3
 
-    main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 ${mode}.py --pre_train_datasets ${cotrain} ${cfg_overrides}"
+    main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 ${mode}.py --pre_train_datasets ${cotrain} --downstream_datasets ${cotrain} ${cfg_overrides}"
     common_params="${cfg_overrides}"
 
     echo "Run program: ${main}"
@@ -15,7 +15,7 @@ function run_repeats {
 
     script="sbatch ${slurm_directive} run/wrapper.sb ${main}"
     echo $script
-    eval $script
+    eval $script &> cotrain.log 2>&1
 }
 
 
@@ -27,24 +27,8 @@ select yn in "Yes" "No"; do
     esac
 done
 
-slurm_directive="--time=0-1:30:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
+slurm_directive="--time=0-3:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=6"
 
-## ssl
-# run_repeats "self-supervised" "cora citeseer pubmed arxiv arxiv23" ""
 
-## ssl linear probe
-run_repeats "self-supervised" "cora citeseer pubmed arxiv arxiv23" "--linear_prob --max_epoch 200"
+run_repeats "subgcon" "cora citeseer pubmed arxiv arxiv23" "--encoder gcn"
 
-# ## sup gcn
-# run_repeats "supervised" "cora citeseer pubmed arxiv arxiv23" "--encoder gcn --multi_sup_mode"
-
-# ## sup gat
-# run_repeats "supervised" "cora citeseer pubmed arxiv arxiv23"  "--multi_sup_mode"
-
-# ## sup gat small
-# run_repeats "supervised" "cora citeseer pubmed" "--encoder gcn" "--multi_sup_mode"
-
-## ssl gat small
-# run_repeats "self-supervised" "cora citeseer pubmed" "--max_epoch 200"
-## ssl gat small linear probe
-run_repeats "self-supervised" "cora citeseer pubmed" "--linear_prob --max_epoch 200 --initial_weight 1. 1. 1. --min_ratio 1. 1. 1."

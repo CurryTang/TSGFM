@@ -219,6 +219,60 @@ chemhiv: &chemhiv
   eval_metric: auc
   eval_func: binary_auc_func
   num_classes: 2
+  
+tox21: &tox21
+  <<: *E2E-graph
+  dataset_name: tox21
+  process_label_func: process_positive_negative_multi_label
+  eval_metric: aucmulti
+  eval_func: binary_auc_multi_func
+  num_classes: 12
+
+tox21_eval: &tox21_eval
+  <<: *tox21
+  process_label_func: process_label_positive_only
+
+muv: &muv
+  <<: *E2E-graph
+  dataset_name: muv
+  process_label_func: process_positive_negative_multi_label
+  eval_metric: aucmulti
+  eval_func: binary_auc_multi_func
+  num_classes: 17
+
+muv_eval: &muv_eval
+  <<: *muv
+  process_label_func: process_label_positive_only
+
+toxcast: &toxcast
+  <<: *E2E-graph
+  dataset_name: toxcast
+  process_label_func: process_positive_negative_multi_label
+  eval_metric: aucmulti
+  eval_func: binary_auc_multi_func
+  num_classes: 588
+
+toxcast_eval: &toxcast_eval
+  <<: *toxcast
+  process_label_func: process_label_positive_only
+
+bace: &bace
+  <<: *E2E-graph
+  dataset_name: bace
+  process_label_func: process_reverse_binary_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2
+
+bbbp: &bbbp
+  <<: *E2E-graph
+  dataset_name: bbbp
+  process_label_func: process_reverse_binary_label
+  eval_metric: auc
+  eval_func: binary_auc_func
+  num_classes: 2
+
+
 
 LR-node: &LR-node
   task_level: lr_node

@@ -31,19 +31,23 @@ done
 slurm_directive="--time=0-3:30:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
 # obj="--dataset citeseer --max_epoch 300 --count 50 --mode sup --encoder gcn" 
 # run_repeats "${obj}" "gcn_${d}_sup"
-# for d in "cora" "citeseer" "pubmed" "arxiv" "arxiv23"
-# do
-#     obj="--dataset ${d} --max_epoch 300 --count 50 --mode sup" 
-#     run_repeats "${obj}" "gat_${d}_sup"
-#     obj="--dataset ${d} --max_epoch 300 --count 50 --mode ssl --linear_prob"
-#     run_repeats "${obj}" "gat_${d}_ssl"
-# done
+for d in "cora" "citeseer" "pubmed" "arxiv" "arxiv23" "products" "amazonratings" "bookchild" "bookhis" "elecomp" "elephoto" "sportsfit" "wikics"
+do
+    case "$d" in
+        "cora" | "citeseer" | "pubmed")
+            max_epoch=500
+            ;;
+    *)
+            max_epoch=1000
+            ;;
+    esac
+    obj="--dataset ${d} --max_epoch ${max_epoch} --count 50 --mode sup" 
+    run_repeats "${obj}" "gat_${d}_sup"
+    obj="--dataset ${d} --max_epoch ${max_epoch} --count 50 --mode ssl --linear_prob"
+    run_repeats "${obj}" "gat_${d}_ssl"
+done
 
-d="arxiv"
-# obj="--dataset ${d} --max_epoch 200 --count 50 --mode sup" 
-# run_repeats "${obj}" "gat_${d}_sup"
-obj="--dataset ${d} --max_epoch 1000 --count 50 --mode ssl --linear_prob"
-run_repeats "${obj}" "gat_${d}_ssl"
+
 
 
 

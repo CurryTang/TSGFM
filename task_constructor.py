@@ -26,7 +26,8 @@ from ogb.nodeproppred import PygNodePropPredDataset
 
 name2dataset = {"arxiv": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
                 'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset, "bookchild": SingleGraphOFADataset, "amazonratings": SingleGraphOFADataset, "bookhis": SingleGraphOFADataset, "elecomp": SingleGraphOFADataset, "elephoto": SingleGraphOFADataset, "sportsfit": SingleGraphOFADataset, 'products': SingleGraphOFADataset,
-                "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset}
+                "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, "bace": MolOFADataset, "bbbp": MolOFADataset, 
+                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset}
 
 
 ########################################################################
