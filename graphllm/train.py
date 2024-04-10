@@ -14,9 +14,8 @@ import transformers
 from graphllm.constants import IGNORE_INDEX, DEFAULT_GRAPH_TOKEN, DEFAULT_GRAPH_START_TOKEN, DEFAULT_GRAPH_END_TOKEN, DEFAULT_GRAPH_PAD_ID
 from torch.utils.data import Dataset
 from graphllm.llaga_trainer import LLaGATrainer
-
 from graphllm.language_model.llaga_mistral import LlagaMistralForCausalLM
-
+from graphllm.utils import get_propagated_features
 import random
 from tqdm import trange
 import graphllm.converstation as conversation_lib
@@ -61,7 +60,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
+    cache_dir: Optional[str] = field(default="/localscratch/chenzh85")
     optim: str = field(default="adamw_torch")
     remove_unused_columns: bool = field(default=False)
     freeze_mm_mlp_adapter: bool = field(default=False)
@@ -520,6 +519,30 @@ def preprocess_mpt(
 
 
 
+def generate_HO_embeddings(data_obj, data_dir, embedding_type, max_hop = 4):
+    orig_x = data_obj.node_text_feat
+    orig_edge_index = data_obj.edge_index
+    if osp.exists(osp.join(data_dir, f"{embedding_type}_x.pt")):
+        print(f"Already generated! Pass!")
+        return
+    propagated_features = get_propagated_features(
+        orig_edge_index, orig_x, edge_attr=None, k = max_hop - 1,
+        normalize=False
+    )
+    for i in range(max_hop):
+        if i == 0:
+            hop_name = os.path.join(data_dir, f"{embedding_type}_x.pt")
+        else:
+            hop_name = os.path.join(data_dir, f"{embedding_type}_{i}hop_x.pt")
+        new_x = propagated_features[i]
+        torch.save(new_x, hop_name)
+        print(f"Saved {hop_name}")
+    
+        
+        
+
+
+
 def preprocess(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
@@ -590,13 +613,22 @@ class LazySupervisedGraphDataset(Dataset):
                 ds=dataset.split('.')
                 repeat=int(ds[1])
                 dataset=ds[0]
+            data_path = osp.join(data_args.data_saved_path, dataset, 'processed', "geometric_data_processed.pt")
             try:
-                data_path = osp.join(data_args.data_path, dataset, "geometric_data_processed.pt")
-                data = torch.load(data_path)
+                data = torch.load(data_path)[0]
+                if hasattr(data, "train_masks"):
+                    data.train_mask = data.train_masks[0]
+                    data.val_mask = data.val_masks[0]
+                    data.test_mask = data.test_masks[0]
+                del data.train_masks
+                del data.val_masks
+                del data.test_masks
             except Exception:
                 raise ValueError(f"Dataset {dataset} not found")
             self.datas[dataset]=data
             data_dir=os.path.dirname(data_path)
+            if data_args.template == "HO":
+                generate_HO_embeddings(self.datas[dataset], data_dir, data_args.pretrained_embedding_type, self.use_hop)
             if data_args.template == "ND":
                 pretrained_emb = self.load_pretrain_embedding_graph(data_dir, data_args.pretrained_embedding_type)
                 self.structure_emb = torch.load(
@@ -630,9 +662,6 @@ class LazySupervisedGraphDataset(Dataset):
                             for line in file:
                                 l = json.loads(line)
                                 l["dataset"]=dataset
-                                if dataset == "products":
-                                    l["conversations"][0][
-                                        'value'] = f"Given a node-centered graph: {DEFAULT_GRAPH_TOKEN}, where nodes represent products sold in Amazon, and edges between products indicate they are purchased together. We need to classify the center node into 47 classes: Home & Kitchen, Health & Personal Care, Beauty, Sports & Outdoors, Books, Patio, Lawn & Garden, Toys & Games, CDs & Vinyl, Cell Phones & Accessories, Grocery & Gourmet Food, Arts, Crafts & Sewing, Clothing, Shoes & Jewelry, Electronics, Movies & TV, Software, Video Games, Automotive, Pet Supplies, Office Products, Industrial & Scientific, Musical Instruments, Tools & Home Improvement, Magazine Subscriptions, Baby Products, label 25, Appliances, Kitchen & Dining, Collectibles & Fine Art, All Beauty, Luxury Beauty, Amazon Fashion, Computers, All Electronics, Purchase Circles, MP3 Players & Accessories, Gift Cards, Office & School Supplies, Home Improvement, Camera & Photo, GPS & Navigation, Digital Music, Car Electronics, Baby, Kindle Store, Buy a Kindle, Furniture & D&#233;cor, #508510, please tell me which class the center node belongs to?"
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
@@ -653,6 +682,7 @@ class LazySupervisedGraphDataset(Dataset):
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
+                ## these two are not used
                 elif task == "nd":
                     if data_args.template == "HO":
                         data_path = os.path.join(data_dir,
@@ -685,44 +715,6 @@ class LazySupervisedGraphDataset(Dataset):
                                 l["conversations"] = [{'from': 'human', 'value': user_prompt},
                                                       {'from': 'gpt', 'value': assistant_prompt}]
                                 task_list_data_dict.append(l)
-                elif task == "nda":
-                    if data_args.template == "HO":
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_2_10_train.jsonl")
-                    else:
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_{data_args.use_hop}_{data_args.sample_neighbor_size}_train.jsonl")
-                    user_prompt = f"Please briefly describe the center node of {DEFAULT_GRAPH_TOKEN}."
-                    if os.path.exists(data_path):
-                        with open(data_path, 'r') as file:
-                            for line in file:
-                                l = json.loads(line)
-                                l["dataset"] = dataset
-                                id = l['id']
-                                label = data.label_texts[data.y[id]]
-                                if dataset in ["arxiv", "cora", "pubmed"]:
-                                    title = data.title[id]
-                                    ab = data.abs[id]
-                                    if title == "" and ab == "":
-                                        assistant_prompt = f"This is a paper in {label} domain"
-                                    elif title == "":
-                                        assistant_prompt = f"This is a paper in {label} domain, its title is {title}."
-                                    elif ab == "":
-                                        assistant_prompt = f"This is a paper in {label} domain, its abstract is {ab}."
-                                    else:
-                                        assistant_prompt = f"This is a paper in {label} domain, its title is {title}, its abstract is {ab}."
-                                elif dataset == "products":
-                                    desc = data.raw_texts[id]
-                                    if desc == "":
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}."
-                                    else:
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}. It can be described as {desc}"
-                                else:
-                                    raise ValueError
-
-                                l["conversations"] = [{'from': 'human', 'value': user_prompt},
-                                                      {'from': 'gpt', 'value': assistant_prompt}]
-                                task_list_data_dict.append(l)
                 else:
                     print(f"{task} not exist!!!")
                     raise ValueError
@@ -752,13 +744,7 @@ class LazySupervisedGraphDataset(Dataset):
         return pretrained_emb
 
     def load_pretrain_embedding_hop(self, data_dir, pretrained_embedding_type, hop, mask):
-        if pretrained_embedding_type == "simteg":
-            simteg_sbert=[torch.load(os.path.join(data_dir, f"simteg_sbert_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_sbert_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            simteg_roberta = [torch.load(os.path.join(data_dir, f"simteg_roberta_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_roberta_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            simteg_e5 = [torch.load(os.path.join(data_dir, f"simteg_e5_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_e5_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            pretrained_embs = [torch.cat([simteg_sbert[i], simteg_roberta[i], simteg_e5[i]], dim=-1) for i in range(hop + 1)]
-        else:
-            pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))[mask]]+  [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(1, hop+1)]
+        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))]+  [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt")) for i in range(1, hop)]
 
         return pretrained_embs
 
