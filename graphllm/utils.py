@@ -4,9 +4,13 @@ from graphllm.constants import GRAPH_TOKEN_INDEX, DEFAULT_GRAPH_TOKEN
 from torch_sparse import spspmm, spmm
 from scipy.spatial.distance import cdist
 from torch_geometric.utils import remove_self_loops
+<<<<<<< HEAD
 from torch_geometric.utils import scatter, mask_to_index
 from dgl.sampling import sample_neighbors
 import dgl
+=======
+from torch_geometric.utils import scatter
+>>>>>>> 445f2f0e39317634a16f215cf6a7756fb6ab93cb
 
 def get_model_name_from_path(model_path):
     model_path = model_path.strip("/")
@@ -131,6 +135,7 @@ def get_propagated_features(edge_index, features, edge_attr = None, k = 0, norma
             aggr_features = spmm(edge_index, value, num_nodes, num_nodes, aggr_features)
             results.append(aggr_features)
         return results
+<<<<<<< HEAD
 
 def classification_prompt(category = 'paper', label_names = ['A', 'B'], gt = 0):
     num_of_classes = len(label_names)
@@ -197,3 +202,5 @@ def generate_tree(data, hop = 2, neighbor = 10):
 if __name__ == '__main__':
     ### Unit test
     pass 
+=======
+>>>>>>> 445f2f0e39317634a16f215cf6a7756fb6ab93cb

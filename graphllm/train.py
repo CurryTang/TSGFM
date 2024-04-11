@@ -520,7 +520,7 @@ def preprocess_mpt(
 
 
 def generate_HO_embeddings(data_obj, data_dir, embedding_type, max_hop = 4):
-    orig_x = data_obj.x
+    orig_x = data_obj.node_text_feat
     orig_edge_index = data_obj.edge_index
     if osp.exists(osp.join(data_dir, f"{embedding_type}_x.pt")):
         print(f"Already generated! Pass!")
@@ -613,9 +613,16 @@ class LazySupervisedGraphDataset(Dataset):
                 ds=dataset.split('.')
                 repeat=int(ds[1])
                 dataset=ds[0]
+            data_path = osp.join(data_args.data_saved_path, dataset, 'processed', "geometric_data_processed.pt")
             try:
-                data_path = osp.join(data_args.data_saved_path, dataset, 'processed', "geometric_data_processed.pt")
-                data = torch.load(data_path)
+                data = torch.load(data_path)[0]
+                if hasattr(data, "train_masks"):
+                    data.train_mask = data.train_masks[0]
+                    data.val_mask = data.val_masks[0]
+                    data.test_mask = data.test_masks[0]
+                del data.train_masks
+                del data.val_masks
+                del data.test_masks
             except Exception:
                 raise ValueError(f"Dataset {dataset} not found")
             self.datas[dataset]=data
@@ -655,9 +662,6 @@ class LazySupervisedGraphDataset(Dataset):
                             for line in file:
                                 l = json.loads(line)
                                 l["dataset"]=dataset
-                                if dataset == "products":
-                                    l["conversations"][0][
-                                        'value'] = f"Given a node-centered graph: {DEFAULT_GRAPH_TOKEN}, where nodes represent products sold in Amazon, and edges between products indicate they are purchased together. We need to classify the center node into 47 classes: Home & Kitchen, Health & Personal Care, Beauty, Sports & Outdoors, Books, Patio, Lawn & Garden, Toys & Games, CDs & Vinyl, Cell Phones & Accessories, Grocery & Gourmet Food, Arts, Crafts & Sewing, Clothing, Shoes & Jewelry, Electronics, Movies & TV, Software, Video Games, Automotive, Pet Supplies, Office Products, Industrial & Scientific, Musical Instruments, Tools & Home Improvement, Magazine Subscriptions, Baby Products, label 25, Appliances, Kitchen & Dining, Collectibles & Fine Art, All Beauty, Luxury Beauty, Amazon Fashion, Computers, All Electronics, Purchase Circles, MP3 Players & Accessories, Gift Cards, Office & School Supplies, Home Improvement, Camera & Photo, GPS & Navigation, Digital Music, Car Electronics, Baby, Kindle Store, Buy a Kindle, Furniture & D&#233;cor, #508510, please tell me which class the center node belongs to?"
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
@@ -708,44 +712,6 @@ class LazySupervisedGraphDataset(Dataset):
                                         assistant_prompt = f"This is an amazon product which can be categorized as {label}. It can be described as {desc}"
                                 else:
                                     raise ValueError
-                                l["conversations"] = [{'from': 'human', 'value': user_prompt},
-                                                      {'from': 'gpt', 'value': assistant_prompt}]
-                                task_list_data_dict.append(l)
-                elif task == "nda":
-                    if data_args.template == "HO":
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_2_10_train.jsonl")
-                    else:
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_{data_args.use_hop}_{data_args.sample_neighbor_size}_train.jsonl")
-                    user_prompt = f"Please briefly describe the center node of {DEFAULT_GRAPH_TOKEN}."
-                    if os.path.exists(data_path):
-                        with open(data_path, 'r') as file:
-                            for line in file:
-                                l = json.loads(line)
-                                l["dataset"] = dataset
-                                id = l['id']
-                                label = data.label_texts[data.y[id]]
-                                if dataset in ["arxiv", "cora", "pubmed"]:
-                                    title = data.title[id]
-                                    ab = data.abs[id]
-                                    if title == "" and ab == "":
-                                        assistant_prompt = f"This is a paper in {label} domain"
-                                    elif title == "":
-                                        assistant_prompt = f"This is a paper in {label} domain, its title is {title}."
-                                    elif ab == "":
-                                        assistant_prompt = f"This is a paper in {label} domain, its abstract is {ab}."
-                                    else:
-                                        assistant_prompt = f"This is a paper in {label} domain, its title is {title}, its abstract is {ab}."
-                                elif dataset == "products":
-                                    desc = data.raw_texts[id]
-                                    if desc == "":
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}."
-                                    else:
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}. It can be described as {desc}"
-                                else:
-                                    raise ValueError
-
                                 l["conversations"] = [{'from': 'human', 'value': user_prompt},
                                                       {'from': 'gpt', 'value': assistant_prompt}]
                                 task_list_data_dict.append(l)
