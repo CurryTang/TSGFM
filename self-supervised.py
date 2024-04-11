@@ -128,12 +128,13 @@ def pretrain(args, model, graphs, downstream_datas, max_epoch, device, use_sched
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
                     optimizer.step()
+                    if scheduler is not None:
+                        scheduler.step()
 
                 epoch_iter.set_description(f"train_loss: {loss.item():.4f}, Memory: {show_occupied_memory():.2f} MB")
                 losses.append(loss.item())
             
-            if scheduler is not None and args.method == 'graphmae':
-                scheduler.step()
+            
 
             ## torch.save(model.state_dict(), os.path.join(model_dir, model_name))
 

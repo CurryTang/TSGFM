@@ -107,9 +107,14 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     m_size = len(labels)
     ## the following is for downstream tasks
     if hasattr(data, "train_mask"):
-        train_mask = data.train_mask
-        val_mask = data.val_mask
-        test_mask = data.test_mask
+        if isinstance(data.train_mask, list):
+            train_mask = data.train_mask[0]
+            val_mask = data.val_mask[0]
+            test_mask = data.test_mask[0]
+        else:
+            train_mask = data.train_mask
+            val_mask = data.val_mask
+            test_mask = data.test_mask
     elif hasattr(data, 'train_masks'):
         train_mask = data.train_masks[0]
         val_mask = data.val_masks[0]

@@ -14,9 +14,8 @@ import transformers
 from graphllm.constants import IGNORE_INDEX, DEFAULT_GRAPH_TOKEN, DEFAULT_GRAPH_START_TOKEN, DEFAULT_GRAPH_END_TOKEN, DEFAULT_GRAPH_PAD_ID
 from torch.utils.data import Dataset
 from graphllm.llaga_trainer import LLaGATrainer
-
 from graphllm.language_model.llaga_mistral import LlagaMistralForCausalLM
-
+from graphllm.utils import get_propagated_features
 import random
 from tqdm import trange
 import graphllm.converstation as conversation_lib
@@ -61,7 +60,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
+    cache_dir: Optional[str] = field(default="/localscratch/chenzh85")
     optim: str = field(default="adamw_torch")
     remove_unused_columns: bool = field(default=False)
     freeze_mm_mlp_adapter: bool = field(default=False)
@@ -520,6 +519,30 @@ def preprocess_mpt(
 
 
 
+def generate_HO_embeddings(data_obj, data_dir, embedding_type, max_hop = 4):
+    orig_x = data_obj.x
+    orig_edge_index = data_obj.edge_index
+    if osp.exists(osp.join(data_dir, f"{embedding_type}_x.pt")):
+        print(f"Already generated! Pass!")
+        return
+    propagated_features = get_propagated_features(
+        orig_edge_index, orig_x, edge_attr=None, k = max_hop - 1,
+        normalize=False
+    )
+    for i in range(max_hop):
+        if i == 0:
+            hop_name = os.path.join(data_dir, f"{embedding_type}_x.pt")
+        else:
+            hop_name = os.path.join(data_dir, f"{embedding_type}_{i}hop_x.pt")
+        new_x = propagated_features[i]
+        torch.save(new_x, hop_name)
+        print(f"Saved {hop_name}")
+    
+        
+        
+
+
+
 def preprocess(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
@@ -591,12 +614,14 @@ class LazySupervisedGraphDataset(Dataset):
                 repeat=int(ds[1])
                 dataset=ds[0]
             try:
-                data_path = osp.join(data_args.data_path, dataset, "geometric_data_processed.pt")
+                data_path = osp.join(data_args.data_saved_path, dataset, 'processed', "geometric_data_processed.pt")
                 data = torch.load(data_path)
             except Exception:
                 raise ValueError(f"Dataset {dataset} not found")
             self.datas[dataset]=data
             data_dir=os.path.dirname(data_path)
+            if data_args.template == "HO":
+                generate_HO_embeddings(self.datas[dataset], data_dir, data_args.pretrained_embedding_type, self.use_hop)
             if data_args.template == "ND":
                 pretrained_emb = self.load_pretrain_embedding_graph(data_dir, data_args.pretrained_embedding_type)
                 self.structure_emb = torch.load(
@@ -653,6 +678,7 @@ class LazySupervisedGraphDataset(Dataset):
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
+                ## these two are not used
                 elif task == "nd":
                     if data_args.template == "HO":
                         data_path = os.path.join(data_dir,
@@ -752,13 +778,7 @@ class LazySupervisedGraphDataset(Dataset):
         return pretrained_emb
 
     def load_pretrain_embedding_hop(self, data_dir, pretrained_embedding_type, hop, mask):
-        if pretrained_embedding_type == "simteg":
-            simteg_sbert=[torch.load(os.path.join(data_dir, f"simteg_sbert_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_sbert_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            simteg_roberta = [torch.load(os.path.join(data_dir, f"simteg_roberta_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_roberta_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            simteg_e5 = [torch.load(os.path.join(data_dir, f"simteg_e5_x.pt"))[mask]] + [torch.load(os.path.join(data_dir, f"simteg_e5_{i}hop_x.pt"))[mask] for i in range(1, hop + 1)]
-            pretrained_embs = [torch.cat([simteg_sbert[i], simteg_roberta[i], simteg_e5[i]], dim=-1) for i in range(hop + 1)]
-        else:
-            pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))[mask]]+  [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(1, hop+1)]
+        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))[mask]]+  [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(1, hop)]
 
         return pretrained_embs
 

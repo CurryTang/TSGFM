@@ -3,7 +3,7 @@ import torch_geometric as pyg
 import json
 import numpy as np
 import copy
-
+import random
 import utils
 from data.KG.gen_data import KGOFADataset
 from data.chemmol.gen_data import MolOFADataset
@@ -161,6 +161,19 @@ def CiteLinkSplitter(dataset):
                     "test": edge_perm[val_offset:], }
     return edge_indices
 
+def OfficialLinkSplitter(dataset):
+    text_g = dataset.data
+    train_idx = text_g.train_idx
+    val_idx = text_g.val_idx
+    test_idx = text_g.test_idx
+    return {"train": train_idx, "valid": val_idx, "test": test_idx}
+
+
+
+
+
+
+ 
 
 def KGSplitter(dataset):
     converted_triplet = dataset.get_idx_split()
