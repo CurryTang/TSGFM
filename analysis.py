@@ -88,7 +88,55 @@ def main(params):
         data_multiple, min_ratio, train_data
     )
 
-    all_datasets = text_dataset['train'].data.datas[0].g
+
+    params.datamodule = DataModule(
+        text_dataset, num_workers=params.num_workers
+    )
+
+    eval_data = text_dataset["val"] + text_dataset["test"]
+    val_state = [dt.state_name for dt in text_dataset["val"]]
+    test_state = [dt.state_name for dt in text_dataset["test"]]
+    eval_state = val_state + test_state
+    eval_metric = [dt.metric for dt in eval_data]
+    eval_funcs = [dt.meta_data["eval_func"] for dt in eval_data]
+    loss = torch.nn.BCEWithLogitsLoss()
+    evlter = []
+    for dt in eval_data:
+        if dt.metric == "acc":
+            evlter.append(Accuracy(task="multiclass", num_classes=dt.classes))
+        elif dt.metric == "auc":
+            evlter.append(AUROC(task="binary"))
+        elif dt.metric == "apr":
+            evlter.append(MultiApr(num_labels=dt.classes))
+        elif dt.metric == "aucmulti":
+            evlter.append(MultiAuc(num_labels=dt.classes))
+        elif dt.metric == 'hits@k':
+            evlter.append(HitsAtK(k=100))
+    metrics = EvalKit(
+        eval_metric,
+        evlter,
+        loss,
+        eval_funcs,
+        flat_binary_func,
+        eval_mode="max",
+        exp_prefix="",
+        eval_state=eval_state,
+        val_monitor_state=val_state[0],
+        test_monitor_state=test_state[0],
+    )
+    # gnn = PyGGIN(params.num_layers, 768, 768)
+    # gnn = PyGRGCN(params.num_layers, 3, 768, 768)
+    # gnn = PyGGINE(params.num_layers, 768, 768, 768)
+    gnn = PyGRGCNEdge(
+        params.num_layers,
+        5,
+        out_dim,
+        out_dim,
+        drop_ratio=params.dropout,
+        JK=params.JK,
+    )
+    bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
+    model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout)
     
 
 

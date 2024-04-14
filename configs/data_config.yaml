@@ -144,6 +144,25 @@ cora_link_eval:
   args:
     <<: *link-eval-args
 
+citationv8: &citationv8
+  <<: *E2E-link-cite
+  dataset_splitter: OfficialLinkSplitter
+  dataset_name: citationv8
+
+citationv8_eval: &citationv8_eval
+  <<: *citationv8
+  args:
+    <<: *link-eval-args
+  
+goodreads: &goodreads
+  <<: *E2E-link-cite
+  dataset_name: goodreads
+
+goodreads_eval: &goodreads_eval
+  <<: *goodreads
+  args:
+    <<: *link-eval-args
+
 pubmed_link: &pubmed_link
   <<: *E2E-link-cite
   dataset_name: pubmed

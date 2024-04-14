@@ -28,3 +28,4 @@ repeats: 1
 r_repeats: 1
 n_trials: 50
 output_select: "val"
+path_to_checkpoint: ""

@@ -300,3 +300,24 @@ def set_mask(data, name, index, dtype=torch.bool):
     mask = torch.zeros(data.num_nodes, dtype=dtype)
     mask[index] = True
     setattr(data, name, mask)
+
+
+def get_mask(data, i = 0):
+    """
+        Given different types of mask format, return the first seed
+    """
+    if hasattr(data, 'train_mask'):
+        if isinstance(data.train_mask, torch.Tensor):
+            return data.train_mask, data.val_mask, data.test_mask
+        else:
+            if i < len(data.train_mask):
+                return data.train_mask[i], data.val_mask[i], data.test_mask[i]
+            else:
+                return data.train_mask[0], data.val_mask[0], data.test_mask[0]
+    elif hasattr(data, 'train_masks'):
+        if i < len(data.train_masks):
+            return data.train_masks[i], data.val_masks[i], data.test_masks[i]
+        else:
+            return data.train_masks[0], data.val_masks[0], data.test_masks[0]
+
+    

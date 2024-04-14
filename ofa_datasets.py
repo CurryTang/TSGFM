@@ -284,7 +284,6 @@ class SubgraphLinkHierDataset(SubgraphHierDataset):
 
     def get_neighbors(self, index):
         edge_id = self.total_edges[index]
-
         if index < self.pos_index:
             label = 1
         else:
