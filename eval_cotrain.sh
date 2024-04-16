@@ -30,5 +30,7 @@ done
 slurm_directive="--time=0-3:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=6"
 
 
-run_repeats "subgcon" "cora citeseer pubmed arxiv arxiv23" "--encoder gcn"
+
+run_repeats "subgcon" "products bookhis bookchild elephoto elecomp sportsfit" "--encoder gcn --max_epoch 20"
+ 
 

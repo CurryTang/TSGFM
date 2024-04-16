@@ -7,8 +7,36 @@ import numpy as np
 from torch_geometric.utils import (to_scipy_sparse_matrix, scatter, )
 from tqdm.autonotebook import trange
 import gc
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
+import torch.nn.functional as F
 
-ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384}
+
+ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384, 'random': 128, 'tfidf': 300}
+
+def generate_tfidf_pytorch(texts, hidden_dimension=300):
+    """
+    Generates TF-IDF vectors with a specified hidden dimension and returns a PyTorch tensor.
+
+    Args:
+        texts (list): A list of text documents.
+        hidden_dimension (int, optional): The desired dimensionality of the TF-IDF vectors. 
+                                          Defaults to 2.
+
+    Returns:
+        torch.Tensor: A PyTorch tensor containing the TF-IDF vectors.
+    """
+
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(texts)
+
+    svd = TruncatedSVD(n_components=hidden_dimension)
+    tfidf_reduced = svd.fit_transform(tfidf_matrix)
+
+    # Convert to PyTorch tensor
+    tfidf_tensor = torch.tensor(tfidf_reduced, dtype=torch.float32)
+
+    return tfidf_tensor
 
 
 class SentenceEncoder:
@@ -64,6 +92,10 @@ class SentenceEncoder:
             self.model = SentenceTransformer("sentence-transformers/roberta-base-nli-stsb-mean-tokens",
                 device=self.device, cache_folder=self.root, )
             self.encode = self.ST_encode
+        elif self.name == "tfidf":
+            self.encode = self.tfidf_encode
+        elif self.name == "random":
+            self.encode = self.random_encode
         else:
             raise ValueError(f"Unknown language model: {self.name}.")
 
@@ -80,6 +112,14 @@ class SentenceEncoder:
             embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True,
                 convert_to_tensor=to_tensor, convert_to_numpy=not to_tensor, )
         return embeddings
+    
+    def random_encode(self, texts, to_tensor=True):
+        embeddings = torch.normal(0, 1, size=(len(texts), ENCODER_DIM_DICT['random']))
+        return embeddings
+    
+    def tfidf_encode(self, texts, to_tensor=True):
+        embeddings = generate_tfidf_pytorch(texts, hidden_dimension=ENCODER_DIM_DICT['tfidf'])
+        return F.normalize(embeddings)
 
     def llama_encode(self, texts, to_tensor=True):
 

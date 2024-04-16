@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import torch
 
-from graphmae.utils import (
+from graphmae_dgl.utils import (
     build_args,
     create_optimizer,
     set_random_seed,
@@ -11,9 +11,9 @@ from graphmae.utils import (
     get_current_lr,
     load_best_configs,
 )
-from graphmae.data_util import load_downstream_dataset
-from graphmae.models import build_model
-from graphmae.evaluation import linear_probing_full_batch
+from graphmae_dgl.data_util import load_downstream_dataset
+from graphmae_dgl.models import build_model
+from graphmae_dgl.evaluation import linear_probing_full_batch
 
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)

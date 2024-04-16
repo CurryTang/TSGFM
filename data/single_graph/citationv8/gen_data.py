@@ -6,7 +6,43 @@ from data.ofa_data import OFAPygDataset
 from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.data.download import download_google_url
 import dgl
+import random
 
+def select_unique_elements_1d(tensor, portion):
+    """Selects a specified portion of elements from a 1D tensor without duplicates.
+
+    Args:
+        tensor (torch.Tensor): The input 1D tensor.
+        portion (float): The portion of elements to select (between 0 and 1).
+
+    Returns:
+        torch.Tensor: A tensor containing the selected elements.
+    """
+
+    if portion <= 0 or portion > 1:
+        raise ValueError("portion must be between 0 and 1")
+
+    num_elements = int(portion * len(tensor))
+
+    # Use a set to ensure uniqueness
+    selected_indices = set(random.sample(range(len(tensor)), num_elements))
+
+    selected_elements = tensor[list(selected_indices)]
+    return selected_elements 
+
+def subset_split(dataset):
+    year = dataset.year 
+    _, sorted_indices = torch.topk(year, k=len(year)) 
+    train_offset = int(len(year) * 0.98)
+    val_offset = int(len(year) * 0.01)
+    test_offset = int(len(year) * 0.01)
+    train_indices = sorted_indices[:train_offset]
+    val_indices = sorted_indices[train_offset:train_offset + val_offset]
+    test_indices = sorted_indices[train_offset + val_offset:]
+    train_indices = select_unique_elements_1d(train_indices, 0.03)
+    val_indices = select_unique_elements_1d(val_indices, 0.25)
+    test_indices = select_unique_elements_1d(test_indices, 0.5)
+    return train_indices, val_indices, test_indices
 
 
 def get_data(dset):
@@ -24,6 +60,10 @@ def get_data(dset):
     edges = dgl_data.edges()
     edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
     new_data = pyg.data.Data(edge_index=edge_index, node_year = dgl_data.ndata["year"])
+    train_indices, val_indices, test_indices = subset_split(new_data)
+    new_data.train_idx = train_indices
+    new_data.val_idx = val_indices
+    new_data.test_idx = test_indices
     text = pd_data["text"].tolist()
     clean_text = ["feature node. paper title and abstract: " + t for t in text]
     edge_label_text = [

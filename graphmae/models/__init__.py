@@ -14,30 +14,21 @@ def build_model(args):
     encoder_type = args.encoder
     decoder_type = args.decoder
     mask_rate = args.mask_rate
-    remask_rate = args.remask_rate
-    mask_method = args.mask_method
     drop_edge_rate = args.drop_edge_rate
+    replace_rate = args.replace_rate
+
 
     activation = args.activation
     loss_fn = args.loss_fn
     alpha_l = args.alpha_l
-
+    concat_hidden = args.concat_hidden
     num_features = args.num_features
-    num_dec_layers = args.num_dec_layers
-    num_remasking = args.num_remasking
-    lam = args.lam
-    delayed_ema_epoch = args.delayed_ema_epoch
-    replace_rate = args.replace_rate
-    remask_method = args.remask_method
-    momentum = args.momentum
-    zero_init = args.dataset in ("cora", "pubmed", "citeseer")
+
 
     model = PreModel(
-        in_dim=num_features,
-        num_hidden=num_hidden,
+        in_dim=int(num_features),
+        num_hidden=int(num_hidden),
         num_layers=num_layers,
-        num_dec_layers=num_dec_layers,
-        num_remasking=num_remasking,
         nhead=num_heads,
         nhead_out=num_out_heads,
         activation=activation,
@@ -48,17 +39,11 @@ def build_model(args):
         encoder_type=encoder_type,
         decoder_type=decoder_type,
         mask_rate=mask_rate,
-        remask_rate=remask_rate,
-        mask_method=mask_method,
         norm=norm,
         loss_fn=loss_fn,
         drop_edge_rate=drop_edge_rate,
-        alpha_l=alpha_l,
-        lam=lam,
-        delayed_ema_epoch=delayed_ema_epoch,
         replace_rate=replace_rate,
-        remask_method=remask_method,
-        momentum=momentum,
-        zero_init=zero_init,
+        alpha_l=alpha_l,
+        concat_hidden=concat_hidden,
     )
     return model

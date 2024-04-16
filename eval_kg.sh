@@ -1,4 +1,36 @@
-for d in "WN18RR" "FB15K237" "wikics"
-do
-CUDA_VISIBLE_DEVICES=7 python run_cdm.py task_names ${d} d_multiple 1 d_min_ratio 1 lr 0.001 num_layers 3 num_epochs 30 dropout 0.15
+#!/usr/bin/env bash
+
+# Run this script from the project root dir.
+
+function run_repeats {
+    cfg_overrides=$1
+    # The cmd line cfg overrides that will be passed to the main.py,
+    # e.g. 'name_tag test01 gnn.layer_type gcnconv'
+
+    main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python run_cdm.py ${cfg_overrides}"
+    common_params="${cfg_overrides}"
+
+    echo "Run program: ${main}"
+
+
+    script="sbatch ${slurm_directive} --output \"${cfg_overrides}\" run/wrapper.sb ${main}"
+    echo $script
+    eval $script
+}
+
+
+echo "Do you wish to sbatch jobs? Assuming this is the project root dir: `pwd`"
+select yn in "Yes" "No"; do
+    case $yn in
+        Yes ) break;;
+        No ) exit;;
+    esac
 done
+
+for dataset in "WN18RR" "FB15k-237"
+do 
+    echo "Eval the traditional model"
+    
+    echo "Eval the OFA model"
+
+done 

@@ -7,49 +7,42 @@ from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.data.download import download_google_url, download_url
 import dgl
 import numpy as np
+import random
 
-
-def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, test_ratio):
-    """Generates training, validation, and testing masks as PyTorch tensors.
+def select_unique_elements_1d(tensor, portion):
+    """Selects a specified portion of elements from a 1D tensor without duplicates.
 
     Args:
-        dataset_size: The total number of data points in the dataset.
-        train_ratio: The proportion of data to be used for training.
-        validation_ratio: The proportion of data to be used for validation.
-        test_ratio: The proportion of data to be used for testing.
+        tensor (torch.Tensor): The input 1D tensor.
+        portion (float): The portion of elements to select (between 0 and 1).
 
     Returns:
-        tuple: A tuple containing the training mask, validation mask, and testing mask.
+        torch.Tensor: A tensor containing the selected elements.
     """
 
-    if train_ratio + validation_ratio + test_ratio != 1:
-        raise ValueError("Ratios must sum up to 1")
+    if portion <= 0 or portion > 1:
+        raise ValueError("portion must be between 0 and 1")
 
-    num_train = int(dataset_size * train_ratio)
-    num_val = int(dataset_size * validation_ratio)
-    num_test = dataset_size - num_train - num_val
+    num_elements = int(portion * len(tensor))
 
-    indices = np.arange(dataset_size)
-    np.random.shuffle(indices)
+    # Use a set to ensure uniqueness
+    selected_indices = set(random.sample(range(len(tensor)), num_elements))
 
-    train_mask = torch.zeros(dataset_size, dtype=torch.bool)
-    train_mask[indices[:num_train]] = True
+    selected_elements = tensor[list(selected_indices)]
+    return selected_elements 
 
-    val_mask = torch.zeros(dataset_size, dtype=torch.bool)
-    val_mask[indices[num_train:num_train + num_val]] = True
-
-    test_mask = torch.zeros(dataset_size, dtype=torch.bool)
-    test_mask[indices[num_train + num_val:]] = True
-
-    return train_mask, val_mask, test_mask
-
-
-
-def get_label_names(dataframe):
-    """Extracts label names in order of their first appearance."""
-    unique_labels = dataframe['label'].unique()  # Get unique label values
-    label_names = [dataframe.loc[dataframe['label'] == label, 'category'].iloc[0] for label in unique_labels]
-    return label_names
+def subset_split(dataset, num_nodes):
+    year = torch.randperm(num_nodes)
+    train_offset = int(len(year) * 0.98)
+    val_offset = int(len(year) * 0.01)
+    test_offset = int(len(year) * 0.01)
+    train_indices = year[:train_offset]
+    val_indices = year[train_offset:train_offset + val_offset]
+    test_indices = year[train_offset + val_offset:]
+    train_indices = select_unique_elements_1d(train_indices, 0.03)
+    val_indices = select_unique_elements_1d(val_indices, 0.25)
+    test_indices = select_unique_elements_1d(test_indices, 0.5)
+    return train_indices, val_indices, test_indices
 
 
 def get_data(full = False):
@@ -69,33 +62,37 @@ def get_data(full = False):
     edge_index = torch.tensor([edges[0].tolist(), edges[1].tolist()], dtype=torch.long)
     pyg_data = pyg.data.Data(edge_index=edge_index, y=dgl_data.ndata['label'])
     dataset_size = pyg_data.y.shape[0]
-    train_mask, val_mask, test_mask = generate_train_val_test_masks(dataset_size, 0.6, 0.2, 0.2)
-    pyg_data.train_mask = train_mask
-    pyg_data.val_mask = val_mask
-    pyg_data.test_mask = test_mask
+    train_indices, val_indices, test_indices = subset_split(pyg_data)
+    pyg_data.train_idx = train_indices
+    pyg_data.val_idx = val_indices
+    pyg_data.test_idx = test_indices
     ## feat_node_texts
     feat_node_texts = pd_data['text'].tolist()
     feat_node_texts = ['feature node. Book' + t for t in feat_node_texts]
-    ## class_node_texts
-    class_node_texts = [
-        "prompt node. literature category and description: "
-        + line['name']
-        + "."
-        + line['description']
-        for _, line in label_desc.iterrows()
+    edge_label_text = [
+        "prompt node. two books are similar",
+        "prompt node. two books are very different"
     ]
-    feat_edge_texts = ["feature edge. these two items are frequently co-purchased or co-viewed."] 
-    noi_node_texts = ["prompt node. node classification of literature category, which country's goodreads is it about?"]
+    feat_edge_texts = ["feature edge. these two items are very similar."] 
+    noi_node_texts = ["prompt node. node classification of literature category"]
     prompt_edge_texts = ["prompt edge.", "prompt edge. edge for query graph that is our target",
         "prompt edge. edge for support graph that is an example", ]
-    prompt_text_map = {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                    "class_node_text_feat": ["class_node_text_feat",
-                                                             torch.arange(len(class_node_texts))],
-                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
-                       "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                   "class_node_text_feat": ["class_node_text_feat",
-                                                            torch.arange(len(class_node_texts))],
-                                   "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
-    return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
-        prompt_edge_texts, ], prompt_text_map,)
+    noi_node_edge_text = [
+        "prompt node. link prediction on the papers that are cited together"
+    ]
+    return (
+        [pyg_data],
+        [
+            feat_node_texts,
+            feat_edge_texts,
+            noi_node_texts + noi_node_edge_text,
+            edge_label_text,
+            prompt_edge_texts,
+        ],
+        {"e2e_link": {"noi_node_text_feat": ["noi_node_text_feat", [1]],
+                      "class_node_text_feat": ["class_node_text_feat",
+                                               torch.arange(0, len(edge_label_text))],
+                      "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}
+         }
+    )
 

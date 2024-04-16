@@ -10,7 +10,7 @@ emb="sbert"
 cache_dir="./llmcheckpoint"
 
 
-use_hop=4
+use_hop=5
 template="HO"
 projector_type="linear"
 prefix=llaga-mistral-7b-hf-${emb}-${use_hop}-hop-token-${projector_type}-projector

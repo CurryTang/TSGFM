@@ -71,13 +71,27 @@ def get_data(dset):
     noi_node_texts = ["prompt node. node classification of literature category"]
     prompt_edge_texts = ["prompt edge.", "prompt edge. edge for query graph that is our target",
         "prompt edge. edge for support graph that is an example", ]
+    edge_label_text = [
+        "prompt node. two papers do not have co-citation",
+        "prompt node. two papers have co-citation"
+    ]
+    edge_text = [
+        "feature edge. connected papers are cited together by other papers."
+    ]
+    noi_node_edge_text = [
+        "prompt node. link prediction on the papers that are cited together"
+    ]
     prompt_text_map = {"e2e_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                                     "class_node_text_feat": ["class_node_text_feat",
                                                              torch.arange(len(class_node_texts))],
                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
+                    "e2e_link": {"noi_node_text_feat": ["noi_node_text_feat", [1]],
+                      "class_node_text_feat": ["class_node_text_feat",
+                                               torch.arange(len(class_node_texts), len(class_node_texts) + len(edge_label_text))],
+                      "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
                        "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                                    "class_node_text_feat": ["class_node_text_feat",
                                                             torch.arange(len(class_node_texts))],
                                    "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
-    return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
+    return ([pyg_data], [feat_node_texts, feat_edge_texts, noi_node_texts + noi_node_edge_text, class_node_texts + edge_label_text,
         prompt_edge_texts, ], prompt_text_map,)

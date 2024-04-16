@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import dgl.function as fn
-from dgl.utils import expand_as_pair
-
+from torch_geometric.nn import GINConv, MLP
 from graphmae.utils import create_activation, NormLayer, create_norm
 
 
@@ -37,42 +35,35 @@ class GIN(nn.Module):
             apply_func = MLP(2, in_dim, num_hidden, out_dim, activation=activation, norm=norm)
             if last_norm:
                 apply_func = ApplyNodeFunc(apply_func, norm=norm, activation=activation)
-            self.layers.append(GINConv(in_dim, out_dim, apply_func, init_eps=0, learn_eps=learn_eps, residual=last_residual))
+            self.layers.append(GINConv(nn=apply_func, train_eps=False))
         else:
             # input projection (no residual)
             self.layers.append(GINConv(
-                in_dim, 
-                num_hidden, 
-                ApplyNodeFunc(MLP(2, in_dim, num_hidden, num_hidden, activation=activation, norm=norm), activation=activation, norm=norm), 
-                init_eps=0,
-                learn_eps=learn_eps,
-                residual=residual)
+                nn=ApplyNodeFunc(MLP(2, in_dim, num_hidden, num_hidden, activation=activation, norm=norm), activation=activation, norm=norm), 
+                train_eps=False)
                 )
             # hidden layers
             for l in range(1, num_layers - 1):
                 # due to multi-head, the in_dim = num_hidden * num_heads
                 self.layers.append(GINConv(
-                    num_hidden, num_hidden, 
-                    ApplyNodeFunc(MLP(2, num_hidden, num_hidden, num_hidden, activation=activation, norm=norm), activation=activation, norm=norm), 
-                    init_eps=0,
-                    learn_eps=learn_eps,
-                    residual=residual)
+                    nn=ApplyNodeFunc(MLP(2, num_hidden, num_hidden, num_hidden, activation=activation, norm=norm), activation=activation, norm=norm), 
+                    train_eps=False)
                 )
             # output projection
             apply_func = MLP(2, num_hidden, num_hidden, out_dim, activation=activation, norm=norm)
             if last_norm:
                 apply_func = ApplyNodeFunc(apply_func, activation=activation, norm=norm)
 
-            self.layers.append(GINConv(num_hidden, out_dim, apply_func, init_eps=0, learn_eps=learn_eps, residual=last_residual))
+            self.layers.append(GINConv(nn=apply_func, train_eps=False))
 
         self.head = nn.Identity()
 
-    def forward(self, g, inputs, return_hidden=False):
+    def forward(self, inputs, edge_index, return_hidden=False):
         h = inputs
         hidden_list = []
         for l in range(self.num_layers):
             h = F.dropout(h, p=self.dropout, training=self.training)
-            h = self.layers[l](g, h)
+            h = self.layers[l](h, edge_index)
             hidden_list.append(h)
         # output projection
         if return_hidden:
@@ -82,64 +73,6 @@ class GIN(nn.Module):
 
     def reset_classifier(self, num_classes):
         self.head = nn.Linear(self.out_dim, num_classes)
-
-
-class GINConv(nn.Module):
-    def __init__(self,
-                 in_dim,
-                 out_dim,
-                 apply_func,
-                 aggregator_type="sum",
-                 init_eps=0,
-                 learn_eps=False,
-                 residual=False,
-                 ):
-        super().__init__()
-        self._in_feats = in_dim
-        self._out_feats = out_dim
-        self.apply_func = apply_func
-
-        self._aggregator_type = aggregator_type
-        if aggregator_type == 'sum':
-            self._reducer = fn.sum
-        elif aggregator_type == 'max':
-            self._reducer = fn.max
-        elif aggregator_type == 'mean':
-            self._reducer = fn.mean
-        else:
-            raise KeyError('Aggregator type {} not recognized.'.format(aggregator_type))
-            
-        if learn_eps:
-            self.eps = torch.nn.Parameter(torch.FloatTensor([init_eps]))
-        else:
-            self.register_buffer('eps', torch.FloatTensor([init_eps]))
-
-        if residual:
-            if self._in_feats != self._out_feats:
-                self.res_fc = nn.Linear(
-                    self._in_feats, self._out_feats, bias=False)
-                print("! Linear Residual !")
-            else:
-                print("Identity Residual ")
-                self.res_fc = nn.Identity()
-        else:
-            self.register_buffer('res_fc', None)
-
-    def forward(self, graph, feat):
-        with graph.local_scope():
-            aggregate_fn = fn.copy_src('h', 'm')
-
-            feat_src, feat_dst = expand_as_pair(feat, graph)
-            graph.srcdata['h'] = feat_src
-            graph.update_all(aggregate_fn, self._reducer('m', 'neigh'))
-            rst = (1 + self.eps) * feat_dst + graph.dstdata['neigh']
-            if self.apply_func is not None:
-                rst = self.apply_func(rst)
-
-            if self.res_fc is not None:
-                rst = rst + self.res_fc(feat_dst)
-
-            return rst
 
 
 class ApplyNodeFunc(nn.Module):

@@ -1,3 +1,8 @@
+import copy
+from tqdm import tqdm
+import torch
+import torch.nn as nn
+
 import os
 import argparse
 import random
@@ -6,22 +11,15 @@ import logging
 from functools import partial
 import numpy as np
 
-import dgl
-
 import torch
 import torch.nn as nn
 from torch import optim as optim
 from tensorboardX import SummaryWriter
-from graphmae.data_util import load_downstream_dataset
-from copy import deepcopy
-import psutil
-import wandb
+
 
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-def get_current_lr(optimizer):
-    return optimizer.state_dict()["param_groups"][0]["lr"]
 
 def accuracy(y_pred, y_true):
     y_true = y_true.squeeze().long()
@@ -48,13 +46,14 @@ def build_args():
     parser = argparse.ArgumentParser(description="GAT")
     parser.add_argument("--seeds", type=int, nargs="+", default=[0])
     parser.add_argument("--dataset", type=str, default="cora")
+    ## new args
     parser.add_argument("--method", type=str, default="graphmae")
+    parser.add_argument("--cache_data_path", type=str, default="./subgraph")
     parser.add_argument('--tag_data_path', type=str, default="./cache_data_minilm")
+    parser.add_argument('--mode', type=str, default="cotrain")
     parser.add_argument("--pre_train_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed", "arxiv", "arxiv23"])
     parser.add_argument("--downstream_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed"])
-    parser.add_argument('--initial_weight', type=float, nargs='+', default = [1.,1.,1.,1.,1.])
-    parser.add_argument('--min_ratio', type=float, nargs='+', default = [1.,1.,1.,1.,1.])
-    parser.add_argument('--rep', type=list, default=[0,0,0])
+    ## 
     parser.add_argument("--device", type=int, default=-1)
     parser.add_argument("--max_epoch", type=int, default=200,
                         help="number of training epochs")
@@ -66,10 +65,8 @@ def build_args():
                         help="number of output attention heads")
     parser.add_argument("--num_layers", type=int, default=2,
                         help="number of hidden layers")
-    parser.add_argument("--num_hidden", type=int, default=512,
+    parser.add_argument("--num_hidden", type=int, default=256,
                         help="number of hidden units")
-    parser.add_argument("--num_out", type=int, default=-1, help="only for bgrl")
-    parser.add_argument("--predictor_hidden_size", type=int, default=128, help="only for bgrl")
     parser.add_argument("--residual", action="store_true", default=False,
                         help="use residual connection")
     parser.add_argument("--in_drop", type=float, default=.2,
@@ -77,7 +74,7 @@ def build_args():
     parser.add_argument("--attn_drop", type=float, default=.1,
                         help="attention dropout")
     parser.add_argument("--norm", type=str, default=None)
-    parser.add_argument("--lr", type=float, default=0.001,
+    parser.add_argument("--lr", type=float, default=0.005,
                         help="learning rate")
     parser.add_argument("--weight_decay", type=float, default=5e-4,
                         help="weight decay")
@@ -86,10 +83,6 @@ def build_args():
     parser.add_argument("--activation", type=str, default="prelu")
     parser.add_argument("--mask_rate", type=float, default=0.5)
     parser.add_argument("--drop_edge_rate", type=float, default=0.0)
-    parser.add_argument("--drop_edge_rate_f", type=float, default=0.0)
-    parser.add_argument("--drop_feat_rate", type=float, default=0.0)
-    parser.add_argument("--drop_feat_rate_2", type=float, default=0.0)
-    parser.add_argument("--drop_edge_rate_2", type=float, default=0.0)
     parser.add_argument("--replace_rate", type=float, default=0.0)
 
     parser.add_argument("--encoder", type=str, default="gat")
@@ -105,52 +98,18 @@ def build_args():
     
     parser.add_argument("--load_model", action="store_true")
     parser.add_argument("--save_model", action="store_true")
-    parser.add_argument("--use_cfg", type=str, default="", help="use the config file")
+    parser.add_argument("--use_cfg", action="store_true")
     parser.add_argument("--logging", action="store_true")
     parser.add_argument("--scheduler", action="store_true", default=False)
     parser.add_argument("--concat_hidden", action="store_true", default=False)
-    parser.add_argument('--multi_sup_mode', action="store_true", default=False)
-    parser.add_argument('--mode', type=str, default='sup')
-    parser.add_argument('--count', type=int, default=30)
-    parser.add_argument('--patience', type=int, default=5)
-    parser.add_argument('--drop_feat', action="store_true", default=False)
 
     # for graph classification
     parser.add_argument("--pooling", type=str, default="mean")
     parser.add_argument("--deg4feat", action="store_true", default=False, help="use node degree as input feature")
-    parser.add_argument("--partition_size", type=int, default=5000)
-    parser.add_argument("--halo_hop", type=int, default=1)
-
-    parser.add_argument("--batch_size", type=int, default=256)
-    parser.add_argument("--batch_size_f", type=int, default=128)
-    parser.add_argument("--sampling_method", type=str, default="saint", help="sampling method, `lc` or `saint`")
-
-    parser.add_argument("--label_rate", type=float, default=1.0)
-    parser.add_argument("--ego_graph_file_path", type=str, default=None)
-    parser.add_argument("--data_dir", type=str, default="data")
-
-    ## specific to graphmae2
-    parser.add_argument("--lam", type=float, default=1.0)
-    parser.add_argument("--full_graph_forward", action="store_true", default=False)
-    parser.add_argument("--delayed_ema_epoch", type=int, default=0)
-    parser.add_argument("--momentum", type=float, default=0.996)
-    parser.add_argument("--mask_method", type=str, default="random")
-    parser.add_argument("--remask_method", type=str, default="random")
-    parser.add_argument("--num_dec_layers", type=int, default=1)
-    parser.add_argument("--num_remasking", type=int, default=3)
-    parser.add_argument("--remask_rate", type=float, default=0.5)
-    parser.add_argument("--mask_type", type=str, default="mask")
-    parser.add_argument("--no_pretrain", action="store_true")
-
-    ## for graphsaint
-    parser.add_argument("--sg_size", type=int, default=3000)
-    parser.add_argument("--num_iters", type=int, default=2)
-    
-    ## for subgcon
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--subgraph_size", type=int, default=50)
-    parser.add_argument("--n_order", type=int, default=10)
-    parser.add_argument("--eval_period", type=int, default=1)
-
+    parser.add_argument("--sb", type=str, default=".")
+    parser.add_argument("")
     args = parser.parse_args()
     return args
 
@@ -180,10 +139,6 @@ def create_norm(name):
     else:
         return nn.Identity
 
-def show_occupied_memory():
-    process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024**2
-
 
 def create_optimizer(opt, model, lr, weight_decay, get_num_layer=None, get_layer_scale=None):
     opt_lower = opt.lower()
@@ -211,49 +166,23 @@ def create_optimizer(opt, model, lr, weight_decay, get_num_layer=None, get_layer
 
 
 # -------------------
-def mask_edge(graph, mask_prob):
-    E = graph.num_edges()
 
-    mask_rates = torch.FloatTensor(np.ones(E) * mask_prob)
-    masks = torch.bernoulli(1 - mask_rates)
-    mask_idx = masks.nonzero().squeeze(1)
-    return mask_idx
-
-
-def drop_edge(graph, drop_rate, return_edges=False):
-    if drop_rate <= 0:
-        return graph
-
-    n_node = graph.num_nodes()
-    edge_mask = mask_edge(graph, drop_rate)
-    src = graph.edges()[0]
-    dst = graph.edges()[1]
-
-    nsrc = src[edge_mask]
-    ndst = dst[edge_mask]
-
-    ng = dgl.graph((nsrc, ndst), num_nodes=n_node)
-    ng = ng.add_self_loop()
-
-    dsrc = src[~edge_mask]
-    ddst = dst[~edge_mask]
-
-    if return_edges:
-        return ng, (dsrc, ddst)
-    return ng
-
-
-def load_best_configs(args):
-    config_path = args.use_cfg
-    with open(config_path, "r") as f:
+def load_best_configs(args, path):
+    with open(path, "r") as f:
         configs = yaml.load(f, yaml.FullLoader)
+
+    if args.dataset not in configs:
+        logging.info("Best args not found")
+        return args
+
+    logging.info("Using best configs")
+    configs = configs[args.dataset]
 
     for k, v in configs.items():
         if "lr" in k or "weight_decay" in k:
             v = float(v)
         setattr(args, k, v)
-    logging.info(f"----- Using best configs from {config_path} -----")
-
+    print("------ Use best configs ------")
     return args
 
 
@@ -327,116 +256,93 @@ class NormLayer(nn.Module):
         std = ((std.T / batch_list).T + 1e-6).sqrt()
         std = std.repeat_interleave(batch_list, dim=0)
         return self.weight * sub / std + self.bias
+
+
+
+def node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob=True, mute=False):
+    model.eval()
+    if linear_prob:
+        with torch.no_grad():
+            x = model.embed(x.to(device), graph.edge_index.to(device))
+            in_feat = x.shape[1]
+        encoder = LogisticRegression(in_feat, num_classes)
+    else:
+        encoder = model.encoder
+        encoder.reset_classifier(num_classes)
+
+    num_finetune_params = [p.numel() for p in encoder.parameters() if  p.requires_grad]
+    if not mute:
+        print(f"num parameters for finetuning: {sum(num_finetune_params)}")
     
-
-def update_namespace(namespace, update_dict):
-  """
-  Updates the values in a namespace using a dictionary.
-
-  Args:
-      namespace: The namespace object to be updated.
-      update_dict: A dictionary containing keys and values to be updated in the namespace.
-
-  Raises:
-      AttributeError: If an attribute in the update_dict is not found in the namespace.
-  """
-  for key, value in update_dict.items():
-    if not hasattr(namespace, key):
-      print(f"warning: Namespace does not have attribute: {key}")
-    setattr(namespace, key, value)
+    encoder.to(device)
+    optimizer_f = create_optimizer("adam", encoder, lr_f, weight_decay_f)
+    final_acc, estp_acc = linear_probing_for_transductive_node_classiifcation(encoder, graph, x, optimizer_f, max_epoch_f, device, mute)
+    return final_acc, estp_acc
 
 
+def linear_probing_for_transductive_node_classiifcation(model, graph, feat, optimizer, max_epoch, device, mute=False):
+    criterion = torch.nn.CrossEntropyLoss()
 
-class Records(object):
-    """
-        record the evaluation performance of models to dynamiclly tune the dataset weight
-    """
-    def __init__(self, datasets, args, initial_weight = None, min_ratio = None) -> None:
-        self.datasets = datasets
-        if initial_weight == None:
-            self.weight = np.ones(len(datasets))
-        else:
-            self.weight = initial_weight
-        assert len(self.weight) == len(datasets)
-        if min_ratio == None:
-            self.min_ratio = np.ones(len(datasets))
-        else:
-            self.min_ratio = min_ratio
-        self.train_indexes = []
-        self.impatience = [0 for _ in range(len(datasets))]
-        self.metric = [0 for _ in range(len(datasets))]
-        ## this one is the average
-        self.test_acc = 0
-        self.val_acc = 0
-        self.records = [[] for _ in range(len(datasets))]
-        self.patience = 3
-        self.window_size = 3
-        if isinstance(self.patience, int):
-            self.patience = np.zeros(len(datasets)) + self.patience
-        self.inpatience = np.zeros(len(self.patience))
-        if isinstance(self.window_size, int):
-            self.window_size = np.zeros(len(self.datasets)) + self.window_size
-        self.args = args
-        self.pat = 0
-        self.best_test_acc = None 
-        self.best_val_acc = None
+    graph = graph.to(device)
+    x = feat.to(device)
+
+    train_mask = graph.train_mask
+    val_mask = graph.val_mask
+    test_mask = graph.test_mask
+    labels = graph.y
+
+    best_val_acc = 0
+    best_val_epoch = 0
+    best_model = None
+
+    if not mute:
+        epoch_iter = tqdm(range(max_epoch))
+    else:
+        epoch_iter = range(max_epoch)
+
+    for epoch in epoch_iter:
+        model.train()
+        out = model(graph, x)
+        loss = criterion(out[train_mask], labels[train_mask])
+        optimizer.zero_grad()
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3)
+        optimizer.step()
+
+        with torch.no_grad():
+            model.eval()
+            pred = model(graph, x)
+            val_acc = accuracy(pred[val_mask], labels[val_mask])
+            val_loss = criterion(pred[val_mask], labels[val_mask])
+            test_acc = accuracy(pred[test_mask], labels[test_mask])
+            test_loss = criterion(pred[test_mask], labels[test_mask])
         
-    def update_metric(self, i, val):
-        self.metric[i] = val
-        self.records[i].append(val)
+        if val_acc >= best_val_acc:
+            best_val_acc = val_acc
+            best_val_epoch = epoch
+            best_model = copy.deepcopy(model)
 
-    def update_test_acc(self, val_acc, test_acc, estp_accs, estp_val_accs):
-        if val_acc > self.val_acc:
-            self.val_acc = val_acc
-            self.test_acc = test_acc
-            self.best_test_acc = estp_accs
-            self.best_val_acc = estp_val_accs
-            self.pat = 0
-        else:
-            self.pat += 1
-    
-    def update_weight(self):
-        metric = np.array(self.metric)
-        p_records = np.array(self.records)
-        for i in range(len(self.datasets)):
-            if self.weight[i] == 1 and self.min_ratio[i] == 1:
-                continue
-            if len(p_records[0]) < self.window_size:
-                continue
+        if not mute:
+            epoch_iter.set_description(f"# Epoch: {epoch}, train_loss:{loss.item(): .4f}, val_loss:{val_loss.item(): .4f}, val_acc:{val_acc}, test_loss:{test_loss.item(): .4f}, test_acc:{test_acc: .4f}")
 
-            vals = p_records[i, -self.window_size:]
-            mean = np.mean(vals)
-            cur = metric[i]
+    best_model.eval()
+    with torch.no_grad():
+        pred = best_model(graph, x)
+        estp_test_acc = accuracy(pred[test_mask], labels[test_mask])
+    if mute:
+        print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
+    else:
+        print(f"--- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
 
-            if cur < mean:
-                self.impatience[i] += 1
-            else:
-                self.impatience[i] = 0
-            if self.impatience[i] >= self.patience[i]:
-                self.weight[i] = max(self.min_ratio[i],
-                                               self.weight[i] / 2) 
-            self.records[i].append(cur)
+    # (final_acc, es_acc, best_acc)
+    return test_acc, estp_test_acc
 
 
-class WandbLogger(object):
-    def __init__(self, log_path, project, args):
-        self.log_path = log_path
-        self.project = project
-        self.args = args
-        self.last_step = 0
-        self.project = project
-        self.start()
+class LogisticRegression(nn.Module):
+    def __init__(self, num_dim, num_class):
+        super().__init__()
+        self.linear = nn.Linear(num_dim, num_class)
 
-    def start(self):
-        self.run = wandb.init(config=self.args, project=self.project)
-
-    def log(self, metrics, step=None):
-        if not hasattr(self, "run"):
-            self.start()
-        if step is None:
-            step = self.last_step
-        self.run.log(metrics)
-        self.last_step = step
-
-    def finish(self):
-        self.run.finish()
+    def forward(self, g, x, *args):
+        logits = self.linear(x)
+        return logits

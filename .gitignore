@@ -203,3 +203,9 @@ LocalGraphClustering/
 ./data/single_graph/products/products.pt
 ./data/single_graph/citationv8/citationv8.pt
 ./data/single_graph/citationv8/citationv8.csv
+
+subgraph/
+subgraph/*
+
+.locks 
+
