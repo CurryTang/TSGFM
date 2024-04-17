@@ -506,7 +506,7 @@ class UnifiedTaskConstructor:
 
             dataset_config = self.data_config_lookup[dataset_name]
 
-            stage_ind = self.add_dataset(stage_config, dataset_config)
+            stage_ind = self.add_dataset(stage_config, dataset_config, full_name=config['dataset'])
 
             if stage_config["stage"] == "valid":
                 val_task_index.append(stage_ind)
@@ -551,7 +551,7 @@ class UnifiedTaskConstructor:
             self.preprocess_storage[split_key] = global_data
         return self.preprocess_storage[split_key]
 
-    def add_dataset(self, stage_config, dataset_config):
+    def add_dataset(self, stage_config, dataset_config, full_name):
         data = self.get_ofa_data(dataset_config)
         split = self.get_data_split(dataset_config)
         stage_name = self.get_stage_name(stage_config, dataset_config)
@@ -560,11 +560,13 @@ class UnifiedTaskConstructor:
             return self.stage_names[stage_config["stage"]].index(stage_name)
         global_data = self.get_global_data(dataset_config)
         prompt_feats = data.get_prompt_text_feat(dataset_config["task_level"])
+        data_name = dataset_config["dataset_name"]
         data = globals()[dataset_config["construct"]](dataset=data, split=split, split_name=stage_config["split_name"],
                                                       prompt_feats=prompt_feats, to_bin_cls_func=globals()[
                 dataset_config["process_label_func"]] if dataset_config.get("process_label_func") else None,
                                                       task_level=dataset_config["task_level"], global_data=global_data,
-                                                      **dataset_config["args"], )
+                                                      data_name = data_name, full_name = full_name,
+                                                      **dataset_config["args"])
         if stage_config["stage"] == "train":
             self.datasets[stage_config["stage"]].append(data)
         else:

@@ -1,8 +1,8 @@
 num_bases: 4
-emb_dim: 100
-num_layers: 5
+emb_dim: 384
+num_layers: 6
 dropout: 0.0
-JK: "last"
+JK: "none"
 lr: 0.0001
 l2: 0
 num_epochs: 50
@@ -21,7 +21,6 @@ task_names:
   - arxiv
 llm_name: "minilm"
 llm_b_size: 1
-val_interval: 1
 accelerator: "auto"
 metric_agg: "argmax"
 repeats: 1
@@ -29,3 +28,14 @@ r_repeats: 1
 n_trials: 50
 output_select: "val"
 path_to_checkpoint: ""
+model: "ofa"
+save_model: True
+
+llm_max_length: 350
+llm_peft: True
+llm_b_size: 1
+load_texts: False
+max_nodes_per_hop: 100
+load_best: False
+gnn_load_path: none
+gnn_load_deepspeed: False

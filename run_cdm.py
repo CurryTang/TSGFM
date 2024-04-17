@@ -19,8 +19,8 @@ from gp.lightning.module_template import ExpConfig
 from gp.lightning.metric import HitsAtK
 from types import SimpleNamespace
 from lightning_model import GraphPredLightning
-from models.model import BinGraphModel, BinGraphAttModel
-from models.model import PyGRGCNEdge
+from models.model import BinGraphModel, BinGraphAttModel, MultiHeadModel
+from models.model import PyGRGCNEdge, OFAMLP
 
 from torchmetrics import AUROC, Accuracy
 from utils import (
@@ -63,7 +63,7 @@ def main(params):
     encoder.flush_model()
 
     in_dim = ENCODER_DIM_DICT[params.llm_name]
-    out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
+    out_dim = 384 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768
 
     if hasattr(params, "d_multiple"):
@@ -127,16 +127,36 @@ def main(params):
     # gnn = PyGGIN(params.num_layers, 768, 768)
     # gnn = PyGRGCN(params.num_layers, 3, 768, 768)
     # gnn = PyGGINE(params.num_layers, 768, 768, 768)
-    gnn = PyGRGCNEdge(
-        params.num_layers,
-        5,
-        out_dim,
-        out_dim,
-        drop_ratio=params.dropout,
-        JK=params.JK,
-    )
-    bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
-    model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout)
+    if params.model == 'ofa':
+        gnn = PyGRGCNEdge(
+            params.num_layers,
+            5,
+            out_dim,
+            out_dim,
+            drop_ratio=params.dropout,
+            JK=params.JK,
+        )
+        bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
+        model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout, noise_feature = params.llm_name == 'random')
+    elif params.model == 'ofamlp':
+        model = OFAMLP(
+            in_dim,
+            out_dim, 
+            1,
+            dropout=params.dropout,
+        )
+    elif params.model == 'adapool':
+        pass 
+    elif params.model == 'mhead':
+        gnn = PyGRGCNEdge(
+            params.num_layers,
+            5,
+            out_dim,
+            out_dim,
+            drop_ratio=params.dropout,
+            JK=params.JK,
+        )
+        model = MultiHeadModel(gnn, out_dim, task_names, data_config_lookup, dropout=params.dropout)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=params.lr, weight_decay=params.l2
     )
@@ -170,11 +190,11 @@ def main(params):
         params.datamodule,
         metrics,
         params.num_epochs,
-        save_model=True,
+        save_model=params.save_model,
         load_best=False,
         reload_freq=1,
         test_rep=params.test_rep,
-        val_interval=params.val_interval,
+        val_interval=1,
         # profiler="simple",
         # accelerator="cpu",
         accelerator=params.accelerator

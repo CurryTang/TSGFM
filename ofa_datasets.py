@@ -126,6 +126,7 @@ class GraphTextDataset(DatasetWithCollate, ABC):
         set_mask(new_subg, "feat_node_mask", list(range(len(feature_graph[0]))))
         new_subg.sample_num_nodes = new_subg.num_nodes
         new_subg.num_classes = num_class
+        new_subg.dataset_name = self.kwargs['data_name']
         # print("text", new_subg)
         return new_subg
 
@@ -166,6 +167,7 @@ class SubgraphDataset(GraphTextDataset):
         self.hop = hop
         self.data_idx = data_idx
         self.class_mapping = class_mapping
+        
 
     def __len__(self):
         return len(self.data_idx)

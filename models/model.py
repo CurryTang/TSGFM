@@ -53,6 +53,8 @@ class AdaPoolClassModel(torch.nn.Module):
         return res
 
 
+
+
 class SingleHeadAtt(torch.nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -117,10 +119,11 @@ class BinGraphAttModel(torch.nn.Module):
     GNN model that use a single layer attention to pool final node representation across
     layers.
     """
-    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0):
+    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0, noise_feature = False):
         super().__init__()
         self.model = model
         self.in_proj = nn.Linear(indim, outdim)
+        self.noise_feature = noise_feature
 
         self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
         self.att = SingleHeadAtt(outdim)
@@ -135,12 +138,18 @@ class BinGraphAttModel(torch.nn.Module):
         else:
             self.rwpe = None
 
+    def random_encode(self, size):
+        embeddings = torch.normal(0, 1, size=size)
+        return embeddings
+
     def initial_projection(self, g):
         g.x = self.in_proj(g.x)
         g.edge_attr = self.in_proj(g.edge_attr)
         return g
 
     def forward(self, g):
+        if self.noise_feature:
+            g.x = self.random_encode(g.x.size())
         g = self.initial_projection(g)
         if self.rwpe is not None:
             with torch.no_grad():
@@ -160,6 +169,61 @@ class BinGraphAttModel(torch.nn.Module):
         # print(class_emb)
         res = self.mlp(class_emb)
         return res
+
+
+
+class MultiHeadModel(torch.nn.Module):
+    def __init__(self, model, outdim, task_names, data_config_lookup, dropout=0.0):
+        super().__init__()
+        self.model = model
+        self.in_proj = nn.Linear(indim, outdim)
+        ## this mlp is shared
+        self.mlp = MLP([outdim, 2 * outdim, outdim], dropout=dropout)
+        ## this is task-specific
+        self.tmlp = {}
+        for name in task_names:
+            task_dim = data_config_lookup[name]["num_classes"]
+            self.tmlp[name] = MLP([outdim, task_dim], dropout=dropout)
+    
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+    
+    def forward(self, g):
+        this_task_name = g.task_name[0]
+        g = self.initial_projection(g)
+        emb = torch.stack(self.model(g), dim=1)
+        query = g.x.unsqueeze(1)
+        emb = self.att(emb, query, emb)[0].squeeze()
+        import ipdb; ipdb.set_trace()
+
+
+class OFAMLP(torch.nn.Module):
+    def __init__(self, indim, outdim, task_dim, emb=None, dropout=0.):
+        super().__init__()
+        self.in_proj = nn.Linear(indim, outdim)
+        self.mlp = MLP([2 * outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
+
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+
+    def forward(self, g):
+        g = self.initial_projection(g)
+        emb = g.x
+        float_mask = g.target_node_mask.to(torch.float)
+        target_emb = float_mask.view(-1, 1) * emb
+        n_count = global_add_pool(float_mask, g.batch, g.num_graphs)
+        class_emb = global_add_pool(target_emb, g.batch, g.num_graphs)
+        class_emb = class_emb / n_count.view(-1, 1)
+        rep_class_emb = class_emb.repeat_interleave(g.num_classes, dim=0)
+        res = self.mlp(
+            torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
+        )
+        return res
+
 
 
 class TransformerModel(nn.Module):

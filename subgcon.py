@@ -10,52 +10,53 @@ from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, 
 from subgcon.utils_mp import Subgraph, preprocess
 from subgcon.models import SugbCon, Encoder, Scorer, Pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
-from graphmae.data_util import load_downstream_dataset_pyg
+from graphmae.data_util import unify_dataset_loader
 from graphmae.models import build_model
 import logging
 import os.path as osp
 from tqdm import tqdm
 
-def train(model, optimizer, data, args, subgraph, scheduler, device):
+def train(model, optimizer, loader, args, subgraph, scheduler, device):
     # Model training
     model.train()
     optimizer.zero_grad()
-    sample_idx = random.sample(range(data.x.size(0)), args.batch_size)
-    batch, index = subgraph.search(sample_idx)
-    z, summary = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+    avg_loss = 0
+    for batch in loader:
+        index = batch.ptr
+        z, summary = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
     
-    loss = model.loss(z, summary)
-    loss.backward()
-    optimizer.step()
-    if scheduler is not None:
-        scheduler.step()
-    return loss.item()
+        loss = model.loss(z, summary)
+        loss.backward()
+        optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
+        avg_loss += loss.item()
+    return loss.item() / len(loader)
 
-def get_all_node_emb(model, mask, num_node, subgraph, args, device):
+def get_all_node_emb(model, num_node, loader, args, device, level='node'):
     # Obtain central node embs from subgraphs 
-    if isinstance(mask, list):
-        mask = mask[0]
-    node_list = np.arange(0, num_node, 1)[mask]
-    list_size = node_list.size
-    z = torch.Tensor(list_size, args.num_hidden).to(device)
-    group_nb = math.ceil(list_size/args.batch_size)
-    for i in tqdm(range(group_nb)):
-        maxx = min(list_size, (i + 1) * args.batch_size)
-        minn = i * args.batch_size 
-        batch, index = subgraph.search(node_list[minn:maxx])
-        node, _ = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
-        z[minn:maxx] = node
+    model.eval()
+    z = []
+    for batch in loader:
+        index = batch.ptr
+        node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+        if level == 'graph':
+            z.append(graph)
+        else:
+            z.append(node[batch.ptr[:-1]])
+    z = torch.cat(z, dim = 0)
     return z
     
     
-def test(model, data, subgraph, args, device):
+def test(model, data, loader, args, device):
     # Model testing
     model.eval()
     num_node = data.x.size(0)
     with torch.no_grad():
-        train_z = get_all_node_emb(model, data.train_mask, num_node, subgraph, args, device)
-        val_z = get_all_node_emb(model, data.val_mask, num_node, subgraph, args, device)
-        test_z = get_all_node_emb(model, data.test_mask, num_node, subgraph, args, device)
+        all_emb = get_all_node_emb(model, num_node, loader, args, device)
+        train_z = all_emb[data.train_mask]
+        val_z = all_emb[data.val_mask]
+        test_z = all_emb[data.test_mask]
     
     train_y = data.y[data.train_mask]
     val_y = data.y[data.val_mask]
@@ -90,30 +91,15 @@ def main(args):
     weight_decay_f = args.weight_decay_f
     linear_prob = args.linear_prob
     load_model = args.load_model
-    no_pretrain = args.no_pretrain
     logs = args.logging
     use_scheduler = args.scheduler
     batch_size = args.batch_size
-    batch_size_f = args.batch_size_f
-    sampling_method = args.sampling_method
-    ego_graph_file_path = args.ego_graph_file_path
-    data_dir = args.data_dir
-
-    n_procs = torch.cuda.device_count()
-    optimizer_type = args.optimizer
-    label_rate = args.label_rate
-    lam = args.lam
-    full_graph_forward = hasattr(args, "full_graph_forward") and args.full_graph_forward and not linear_prob
-
     if args.device < 0:
         device = "cpu"
     else:
         device = "cuda:{}".format(args.device)
-    if args.mode == 'cotrain':
-        graphs = load_downstream_dataset_pyg(args)
-    else:
-        raise NotImplementedError("Method {} not implemented".format(args.mode))
-    feature_dim = graphs[0].x.size(1)
+    feature_dim = args.feature_dim
+    args.num_features = feature_dim 
     ## pretrain part
     max_epochs = args.max_epoch
     use_scheduler = args.scheduler
@@ -123,10 +109,8 @@ def main(args):
             hidden_channels=args.num_hidden, encoder=Encoder(feature_dim, args.num_hidden),
             pool=Pool(in_channels=args.num_hidden),
             scorer=Scorer(args.num_hidden)).to(device)
-    elif args.methods == 'graphmae':
+    elif args.method == 'graphmae':
         model = build_model(args)
-    elif args.methods == 'cotrain':
-        pass 
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -137,6 +121,8 @@ def main(args):
     else:
         scheduler = None
     
+    ## load datas
+    datas = unify_dataset_loader(args.pre_train_datasets, args)
     ## saved stats
     best_avg_val = 0
     val_accs = []
@@ -145,19 +131,15 @@ def main(args):
 
     for e in range(max_epochs):
         ## pre-train stage
-        for i, G in enumerate(graphs):
-            ppr_path = osp.join('./subgraph/' + args.pre_train_datasets[i])
-            subgraph = Subgraph(G.x, G.edge_index, ppr_path, args.subgraph_size, args.n_order, args.pre_train_datasets[i])
-            subgraph.build()
-            this_dataset_loss = train(model, optimizer, G, args, subgraph, scheduler, device)
-            logging.info("Epoch {} Dataset {} Pretrain-Loss {}".format(e, i, this_dataset_loss))
+        for i, G in enumerate(datas):
+            train_loader = G.search(batch_size = batch_size, shuffle = True)
+            import ipdb; ipdb.set_trace()
         
         ## evaluation part
         eval_val = []
         eval_test = []
         for i, G in enumerate(graphs):
-            ppr_path = osp.join('./subgraph/' + args.pre_train_datasets[i])
-            subgraph = Subgraph(G.x, G.edge_index, ppr_path, args.subgraph_size, args.n_order, args.pre_train_datasets[i])
+            
             subgraph.build()
             val_acc, test_acc = test(model, G, subgraph, args, device)
             eval_val.append(val_acc)
@@ -184,8 +166,6 @@ def main(args):
 
 if __name__ == '__main__':
     args = build_args()
-    if args.use_cfg != "":
-        args = load_best_configs(args, args.use_cfg)
     print(args)
     main(args)
     

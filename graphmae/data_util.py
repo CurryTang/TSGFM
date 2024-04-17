@@ -2,12 +2,13 @@ import os.path as osp
 from data.chemmol.gen_data import MolOFADataset
 from graphmae.config import DATASET
 from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
+import torch
 
 def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
                           'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics', 
                           'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link']
-    if dataset.endsWith("-link"):
+    if dataset.endswith("-link"):
         dataset = dataset[:-5]
         link = True
     else:
@@ -49,23 +50,27 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
 
 
 
-def load_one_mol_dataset(dataset = 'tox21'):
-    AVAILABLE_DATASETS = ['chempcba', 'chemhiv', 'tox21', 'bace', 'bbbp', 'muv', 'toxcast']
+
 
 
 
 def unify_dataset_loader(dataset_names, args):
+    ds = []
     for d in dataset_names:
         level = DATASET[d]['level']
         if level == 'node':
-            data = load_one_tag_dataset(d, args.cache_data_path)
+            data = load_one_tag_dataset(d, args.tag_data_path)
             output_path = osp.join(args.cache_data_path, d)
             dataset = NodeSubgraphDataset(data, output_path, args.subgraph_size, name=d)
+            ds.append(dataset)
         elif level == 'link':
-            data = load_one_tag_dataset(d, args.cache_data_path)
+            data = load_one_tag_dataset(d, args.tag_data_path)
             output_path = osp.join(args.cache_data_path, d)
             dataset = LinkSubgraphDataset(data, output_path, args.subgraph_size, name=d)
+            ds.append(dataset)
         elif level == 'graph':
             dataset = GraphSubgraphDataset(d, args.sb, args.subgraph_size)
+            ds.append(dataset)
         else:
             raise ValueError(f"Unknown dataset level: {level}")
+    return ds

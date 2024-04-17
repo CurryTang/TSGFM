@@ -4,7 +4,8 @@ E2E-node: &E2E-node
   construct: ConstructNodeCls
   args:
     walk_length: null
-    single_prompt_edge: True
+    single_prompt_edge: False
+    max_nodes_per_hop: 100
   eval_metric: acc
   eval_func: classification_func
   eval_mode: max
@@ -117,12 +118,14 @@ wikics: &wikics
 link-eval-args: &link-eval-args
   remove_edge: False
   walk_length: null
+  max_nodes_per_hop: 100
 
 E2E-link: &E2E-link
   task_level: e2e_link
   args:
     remove_edge: True
     walk_length: null
+    max_nodes_per_hop: 100
 
 E2E-link-cite: &E2E-link-cite
   <<: *E2E-link

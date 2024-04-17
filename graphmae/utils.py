@@ -109,7 +109,8 @@ def build_args():
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--subgraph_size", type=int, default=50)
     parser.add_argument("--sb", type=str, default=".")
-    parser.add_argument("")
+
+    parser.add_argument("--feature_dim", type=int, default=384)
     args = parser.parse_args()
     return args
 
