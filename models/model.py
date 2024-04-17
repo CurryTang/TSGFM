@@ -149,7 +149,7 @@ class BinGraphAttModel(torch.nn.Module):
 
     def forward(self, g):
         if self.noise_feature:
-            g.x = self.random_encode(g.x.size())
+            g.x[g.feat_node_mask] = self.random_encode(g.x.size()).to(g.x.device)[g.feat_node_mask]
         g = self.initial_projection(g)
         if self.rwpe is not None:
             with torch.no_grad():

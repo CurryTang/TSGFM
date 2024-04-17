@@ -137,7 +137,7 @@ def main(params):
             JK=params.JK,
         )
         bin_model = BinGraphAttModel if params.JK == "none" else BinGraphModel
-        model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout, noise_feature = params.llm_name == 'random')
+        model = bin_model(gnn, in_dim, out_dim, 1, add_rwpe=params.rwpe, dropout=params.dropout, noise_feature = params.noise)
     elif params.model == 'ofamlp':
         model = OFAMLP(
             in_dim,

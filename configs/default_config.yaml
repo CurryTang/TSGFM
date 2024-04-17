@@ -30,6 +30,7 @@ output_select: "val"
 path_to_checkpoint: ""
 model: "ofa"
 save_model: True
+noise: False
 
 llm_max_length: 350
 llm_peft: True
