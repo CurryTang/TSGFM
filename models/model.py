@@ -196,7 +196,6 @@ class MultiHeadModel(torch.nn.Module):
         emb = torch.stack(self.model(g), dim=1)
         query = g.x.unsqueeze(1)
         emb = self.att(emb, query, emb)[0].squeeze()
-        import ipdb; ipdb.set_trace()
 
 
 class OFAMLP(torch.nn.Module):

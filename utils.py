@@ -27,7 +27,7 @@ def generate_tfidf_pytorch(texts, hidden_dimension=300):
         torch.Tensor: A PyTorch tensor containing the TF-IDF vectors.
     """
 
-    vectorizer = TfidfVectorizer()
+    vectorizer = TfidfVectorizer(max_features=3000)
     tfidf_matrix = vectorizer.fit_transform(texts)
 
     svd = TruncatedSVD(n_components=hidden_dimension)

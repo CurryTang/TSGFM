@@ -63,7 +63,7 @@ def main(params):
     encoder.flush_model()
 
     in_dim = ENCODER_DIM_DICT[params.llm_name]
-    out_dim = 384 + (params.rwpe if params.rwpe is not None else 0)
+    out_dim = 768 + (params.rwpe if params.rwpe is not None else 0)
     # out_dim = 768
 
     if hasattr(params, "d_multiple"):
@@ -190,7 +190,7 @@ def main(params):
         params.datamodule,
         metrics,
         params.num_epochs,
-        save_model=params.save_model,
+        save_model=True,
         load_best=False,
         reload_freq=1,
         test_rep=params.test_rep,

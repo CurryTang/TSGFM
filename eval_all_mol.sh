@@ -28,7 +28,7 @@ select yn in "Yes" "No"; do
 done
 
 
-slurm_directive="--time=0-8:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
+slurm_directive="--time=0-3:00:00 --mem=128G --gres=gpu:v100:1 --cpus-per-task=4"
 run_repeats "--override ./e2e_graph.yaml"
 
 
