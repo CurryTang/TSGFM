@@ -13,15 +13,17 @@ import transformers
 
 from graphllm.constants import IGNORE_INDEX, DEFAULT_GRAPH_TOKEN, DEFAULT_GRAPH_START_TOKEN, DEFAULT_GRAPH_END_TOKEN, DEFAULT_GRAPH_PAD_ID
 from torch.utils.data import Dataset
-from graphllm.llaga_trainer import LLaGATrainer
 from graphllm.language_model.llaga_mistral import LlagaMistralForCausalLM
-from graphllm.utils import get_propagated_features
+from graphllm.utils import classification_prompt, link_prediction_prompt
 import random
 from tqdm import trange
 import graphllm.converstation as conversation_lib
 from graphllm.utils import tokenizer_graph_token
+from graphllm.llaga_trainer import LLaGATrainer
 import scipy.sparse as sp
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
 
 local_rank = None
@@ -55,6 +57,7 @@ class DataArguments:
     use_dataset:Optional[str] = field(default="arxiv")
     template: Optional[str] = field(default="HO")
     data_saved_path: Optional[str] = field(default="cache_data_minilm")
+    category: Optional[str] = field(default="paper")
 
 
 
@@ -310,7 +313,6 @@ def preprocess_llama_2(
         conversations.append(conv.get_prompt())
 
     # Tokenize conversations
-
     if has_graph:
         input_ids = torch.stack([tokenizer_graph_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
     else:
@@ -369,180 +371,12 @@ def preprocess_llama_2(
     )
 
 
-def preprocess_v1(
-    sources,
-    tokenizer: transformers.PreTrainedTokenizer,
-    has_graph: bool = False
-) -> Dict:
-    conv = conversation_lib.default_conversation.copy()
-    roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
-
-    # Apply prompt templates
-    conversations = []
-    for i, source in enumerate(sources):
-        if roles[source[0]["from"]] != conv.roles[0]:
-            # Skip the first one if it is not from human
-            source = source[1:]
-
-        conv.messages = []
-        for j, sentence in enumerate(source):
-            role = roles[sentence["from"]]
-            assert role == conv.roles[j % 2], f"{i}"
-            conv.append_message(role, sentence["value"])
-        conversations.append(conv.get_prompt())
-
-    # Tokenize conversations
-
-    if has_graph:
-        input_ids = torch.stack([tokenizer_graph_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
-    else:
-        input_ids = tokenizer(
-            conversations,
-            return_tensors="pt",
-            padding="longest",
-            max_length=tokenizer.model_max_length,
-            truncation=True,
-        ).input_ids
-
-    targets = input_ids.clone()
-
-    assert conv.sep_style == conversation_lib.SeparatorStyle.TWO
-
-    # Mask targets
-    sep = conv.sep + conv.roles[1] + ": "
-    for conversation, target in zip(conversations, targets):
-        # total_len = int(target.ne(tokenizer.pad_token_id).sum())
-        total_len = target.shape[0]
-
-        rounds = conversation.split(conv.sep2)
-        cur_len = 1
-        target[:cur_len] = IGNORE_INDEX
-        for i, rou in enumerate(rounds):
-            if rou == "":
-                break
-
-            parts = rou.split(sep)
-            if len(parts) != 2:
-                break
-            parts[0] += sep
-
-            if has_graph:
-                round_len = len(tokenizer_graph_token(rou, tokenizer))
-                instruction_len = len(tokenizer_graph_token(parts[0], tokenizer)) - 2
-            else:
-                round_len = len(tokenizer(rou).input_ids)
-                instruction_len = len(tokenizer(parts[0]).input_ids) - 2
-
-            target[cur_len : cur_len + instruction_len] = IGNORE_INDEX
-
-            cur_len += round_len
-        target[cur_len:] = IGNORE_INDEX
-
-        if cur_len < tokenizer.model_max_length:
-            if cur_len != total_len:
-                target[:] = IGNORE_INDEX
-                print(
-                    f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
-
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
-
-
-def preprocess_mpt(
-    sources,
-    tokenizer: transformers.PreTrainedTokenizer,
-) -> Dict:
-    conv = conversation_lib.default_conversation.copy()
-    roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
-
-    # Apply prompt templates
-    conversations = []
-    for i, source in enumerate(sources):
-        if roles[source[0]["from"]] != conv.roles[0]:
-            # Skip the first one if it is not from human
-            source = source[1:]
-
-        conv.messages = []
-        for j, sentence in enumerate(source):
-            role = roles[sentence["from"]]
-            assert role == conv.roles[j % 2], f"{i}"
-            conv.append_message(role, sentence["value"])
-        conversations.append(conv.get_prompt())
-
-    # Tokenize conversations
-    input_ids = torch.stack([tokenizer_graph_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
-    targets = input_ids.clone()
-    assert conv.sep_style == conversation_lib.SeparatorStyle.MPT
-
-    # Mask targets
-    sep = conv.sep + conv.roles[1]
-    for conversation, target in zip(conversations, targets):
-        total_len = int(target.ne(tokenizer.pad_token_id).sum())
-
-        rounds = conversation.split(conv.sep)
-        re_rounds = [conv.sep.join(rounds[:3])] # system + user + gpt
-        for conv_idx in range(3, len(rounds), 2):
-            re_rounds.append(conv.sep.join(rounds[conv_idx:conv_idx+2]))    # user + gpt
-        cur_len = 0
-        target[:cur_len] = IGNORE_INDEX
-        for i, rou in enumerate(re_rounds):
-            if rou == "":
-                break
-
-            parts = rou.split(sep)
-            if len(parts) != 2:
-                break
-            parts[0] += sep
-            round_len = len(tokenizer_graph_token(rou, tokenizer)) + len(tokenizer_graph_token(conv.sep, tokenizer))
-            instruction_len = len(tokenizer_graph_token(parts[0], tokenizer))
-            target[cur_len : cur_len + instruction_len] = IGNORE_INDEX
-
-            cur_len += round_len
-        target[cur_len:] = IGNORE_INDEX
-
-        if cur_len < tokenizer.model_max_length:
-            if cur_len != total_len:
-                target[:] = IGNORE_INDEX
-                print(
-                    f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
-
-    return dict(
-        input_ids=input_ids,
-        labels=targets,
-    )
 
 
 
-def generate_HO_embeddings(data_obj, data_dir, embedding_type, max_hop = 4):
-    orig_x = data_obj.node_text_feat
-    orig_edge_index = data_obj.edge_index
-    if osp.exists(osp.join(data_dir, f"{embedding_type}_x.pt")):
-        print(f"Already generated! Pass!")
-        return
-    propagated_features = get_propagated_features(
-        orig_edge_index, orig_x, edge_attr=None, k = max_hop - 1,
-        normalize=False
-    )
-    for i in range(max_hop):
-        if i == 0:
-            hop_name = os.path.join(data_dir, f"{embedding_type}_x.pt")
-        else:
-            hop_name = os.path.join(data_dir, f"{embedding_type}_{i}hop_x.pt")
-        new_x = propagated_features[i]
-        torch.save(new_x, hop_name)
-        print(f"Saved {hop_name}")
     
         
         
-
-
-
 def preprocess(
     sources: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
@@ -557,10 +391,8 @@ def preprocess(
     """
     if conversation_lib.default_conversation.sep_style == conversation_lib.SeparatorStyle.LLAMA_2:
         return preprocess_llama_2(sources, tokenizer, has_graph=has_graph)
-    if conversation_lib.default_conversation.version.startswith("v1"):
-        return preprocess_v1(sources, tokenizer, has_graph=has_graph)
-    if conversation_lib.default_conversation.version == "mpt":
-        return preprocess_mpt(sources, tokenizer)
+    else:
+        raise NotImplementedError("Only support llama separator")
     # add end signal and concatenate together
     conversations = []
     for source in sources:
@@ -593,6 +425,14 @@ def load_ofa_data(data_path, name):
     data = torch.load(file_path)
     return data
 
+def set_label_names(data, label_csv_path):
+    label_pd = pd.read_csv(label_csv_path)
+    if hasattr(data, 'label_names'):
+        return data 
+    label_names = label_pd['name'].tolist()
+    data.label_names = label_names
+    return data
+
 class LazySupervisedGraphDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
@@ -616,109 +456,75 @@ class LazySupervisedGraphDataset(Dataset):
             data_path = osp.join(data_args.data_saved_path, dataset, 'processed', "geometric_data_processed.pt")
             try:
                 data = torch.load(data_path)[0]
-                if hasattr(data, "train_masks"):
+                if 'wikics' in dataset:
+                    data.train_mask = data.train_mask[:, 0]
+                    data.val_mask = data.val_mask[:, 0]
+                    data.test_mask = data.test_mask
+                if hasattr(data, "train_masks") and 'citeseer' not in dataset:
                     data.train_mask = data.train_masks[0]
                     data.val_mask = data.val_masks[0]
                     data.test_mask = data.test_masks[0]
-                del data.train_masks
-                del data.val_masks
-                del data.test_masks
-            except Exception:
-                raise ValueError(f"Dataset {dataset} not found")
+                
+                    del data.train_masks
+                    del data.val_masks
+                    del data.test_masks
+                elif dataset == 'arxiv':
+                    arxiv_mask = torch.load(osp.join(data_args.data_saved_path, dataset, 'processed', 'arxiv_mask.pt'))
+                    data.train_mask = arxiv_mask['train']
+                    data.val_mask = arxiv_mask['valid']
+                    data.test_mask = arxiv_mask['test']
+            except Exception as e:
+                raise ValueError(e)
+            set_label_names(data, osp.join(data_args.data_saved_path, dataset, 'processed','categories.csv'))
             self.datas[dataset]=data
             data_dir=os.path.dirname(data_path)
-            if data_args.template == "HO":
-                generate_HO_embeddings(self.datas[dataset], data_dir, data_args.pretrained_embedding_type, self.use_hop)
-            if data_args.template == "ND":
-                pretrained_emb = self.load_pretrain_embedding_graph(data_dir, data_args.pretrained_embedding_type)
-                self.structure_emb = torch.load(
-                    f"dataset/laplacian_{data_args.use_hop}_{data_args.sample_neighbor_size}.pt")
-            elif data_args.template == "HO":
-                pretrained_emb = self.load_pretrain_embedding_hop(data_dir, data_args.pretrained_embedding_type, data_args.use_hop, data.train_mask)
-                n = data.num_nodes
-                index = torch.full([n],fill_value=n+1, dtype=torch.long)
-                train_index = torch.arange(data.train_mask.sum())
-                index[data.train_mask] = train_index
-                self.index[dataset]=index
-                self.structure_emb = None
-            else:
-                raise ValueError
-
+            pretrained_emb = self.load_pretrain_embedding_hop(data_dir, data_args.pretrained_embedding_type, data_args.use_hop, data.train_mask)
+            data.x = data.node_text_feat
+            n = data.x.shape[0]
+            index = torch.full([n],fill_value=n+1, dtype=torch.long)
+            train_index = torch.arange(data.train_mask.sum())
+            index[data.train_mask] = train_index
+            self.index[dataset]=index
+            self.structure_emb = None
             self.pretrained_embs[dataset] = pretrained_emb
-
             self.use_task = data_args.use_task.split('-')
-
             for task in self.use_task:
                 task_list_data_dict = []
                 if task == "nc":
-                    if data_args.template == "HO":
-                        data_path = os.path.join(data_dir,
+                    data_path = os.path.join(data_dir,
                                                  f"sampled_2_10_train.jsonl")
-                    else:
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_{data_args.use_hop}_{data_args.sample_neighbor_size}_train.jsonl")
                     if os.path.exists(data_path):
                         with open(data_path, 'r') as file:
                             for line in file:
                                 l = json.loads(line)
                                 l["dataset"]=dataset
+                                node_idx = l['id']
+                                human_conv, gpt_conv = classification_prompt(data_args.category, label_names = data.label_names, gt=data.y[node_idx])
+                                ## dynamically generate the prompts
+                                l['conversations'] = []
+                                l['conversations'].append(human_conv)
+                                l['conversations'].append(gpt_conv)
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
                 elif task == "lp":
-                    if data_args.template == "HO":
-                        data_path = os.path.join(data_dir,
-                                                 f"edge_sampled_2_10_only_train.jsonl")
-                    else:
-                        data_path = os.path.join(data_dir,
+                    data_path = os.path.join(data_dir,
                                                  f"edge_sampled_{data_args.use_hop}_{data_args.sample_neighbor_size}_only_train.jsonl")
                     if os.path.exists(data_path):
                         with open(data_path, 'r') as file:
                             for line in file:
                                 l = json.loads(line)
+                                gt = l['gt']
                                 l["dataset"] = dataset
-                                l["conversations"][0][
-                                    'value'] = f"Given two node-centered subgraphs: {DEFAULT_GRAPH_TOKEN} and {DEFAULT_GRAPH_TOKEN}, we need to predict whether these two nodes connect with each other. Please tell me whether two center nodes in the subgraphs should connect to each other."
+                                prompt, human_conv, gpt_conv = link_prediction_prompt(gt)
+                                l['conversations'] = []
+                                l['conversations'].append(human_conv)
+                                l['conversations'].append(gpt_conv)
+                                l['conversations'][0]['value'] = prompt
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError
-                ## these two are not used
-                elif task == "nd":
-                    if data_args.template == "HO":
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_2_10_train.jsonl")
-                    else:
-                        data_path = os.path.join(data_dir,
-                                                 f"sampled_{data_args.use_hop}_{data_args.sample_neighbor_size}_train.jsonl")
-                    user_prompt = f"Please briefly describe the center node of {DEFAULT_GRAPH_TOKEN}."
-                    if os.path.exists(data_path):
-                        with open(data_path, 'r') as file:
-                            for line in file:
-                                l = json.loads(line)
-                                l["dataset"] = dataset
-                                id = l['id']
-                                label = data.label_texts[data.y[id]]
-                                if dataset in ["arxiv", "cora", "pubmed"]:
-                                    title = data.title[id]
-                                    if title == "":
-                                        assistant_prompt = f"This is a paper in {label} domain"
-                                    else:
-                                        assistant_prompt = f"This is a paper in {label} domain, it's about {title}."
-                                elif dataset == "products":
-                                    desc = data.raw_texts[id]
-                                    if desc == "":
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}."
-                                    else:
-                                        assistant_prompt = f"This is an amazon product which can be categorized as {label}. It can be described as {desc}"
-                                else:
-                                    raise ValueError
-                                l["conversations"] = [{'from': 'human', 'value': user_prompt},
-                                                      {'from': 'gpt', 'value': assistant_prompt}]
-                                task_list_data_dict.append(l)
-                else:
-                    print(f"{task} not exist!!!")
-                    raise ValueError
-
+               
                 if repeat > 1:
                     base_task_list_data_dict = copy.copy(task_list_data_dict)
                     for _ in range(repeat-1):
@@ -734,18 +540,11 @@ class LazySupervisedGraphDataset(Dataset):
         self.data_args = data_args
 
     def load_pretrain_embedding_graph(self, data_dir, pretrained_embedding_type):
-        if pretrained_embedding_type == "simteg":
-            simteg_sbert = torch.load(os.path.join(data_dir, "simteg_sbert_x.pt"))
-            simteg_roberta = torch.load(os.path.join(data_dir, "simteg_roberta_x.pt"))
-            simteg_e5 = torch.load(os.path.join(data_dir, "simteg_e5_x.pt"))
-            pretrained_emb = torch.concat([simteg_sbert, simteg_roberta, simteg_e5], dim=-1)
-        else:
-            pretrained_emb = torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))
+        pretrained_emb = torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))
         return pretrained_emb
 
     def load_pretrain_embedding_hop(self, data_dir, pretrained_embedding_type, hop, mask):
-        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))[mask]]+  [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(1, hop)]
-
+        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(hop+1)]
         return pretrained_embs
 
 
@@ -785,32 +584,19 @@ class LazySupervisedGraphDataset(Dataset):
             data_dict = dict(input_ids=data_dict["input_ids"][0],
                              labels=data_dict["labels"][0])
         # image exist in the data
+
         if 'graph' in self.list_data_dict[i]:
             if not isinstance(self.list_data_dict[i]['graph'][0], list):
                 self.list_data_dict[i]['graph'] = [self.list_data_dict[i]['graph']]
-            if self.template == "ND":
-                graph = torch.LongTensor(self.list_data_dict[i]['graph'])
-                mask = graph != DEFAULT_GRAPH_PAD_ID
-                masked_graph_emb = self.pretrained_embs[self.list_data_dict[i]["dataset"]][graph[mask]]
-                s, n, d = graph.shape[0], graph.shape[1], masked_graph_emb.shape[1]
-                graph_emb = torch.zeros((s, n, d))
-                graph_emb[mask] = masked_graph_emb
-                if self.structure_emb is not None:
-                    graph_emb = torch.cat([graph_emb, self.structure_emb.unsqueeze(0).expand(s, -1, -1)], dim=-1)
 
-            elif self.template == "HO":
-                for g in range(len(self.list_data_dict[i]['graph'])):
-                    center_id = self.list_data_dict[i]['graph'][g][0]
-                    self.list_data_dict[i]['graph'][g] = [center_id]*(self.use_hop+1)
-                graph = torch.LongTensor(self.list_data_dict[i]['graph'])
-                center_id = self.index[self.list_data_dict[i]["dataset"]][graph[:, 0]]
-                graph_emb = torch.stack([emb[center_id] for emb in self.pretrained_embs[self.list_data_dict[i]["dataset"]]], dim=1)
-            else:
-                raise ValueError
+            for g in range(len(self.list_data_dict[i]['graph'])):
+                center_id = self.list_data_dict[i]['graph'][g][0]
+                self.list_data_dict[i]['graph'][g] = [center_id]*(self.use_hop+1)
+            graph = torch.LongTensor(self.list_data_dict[i]['graph'])
+            center_id = self.index[self.list_data_dict[i]["dataset"]][graph[:, 0]]
+            graph_emb = torch.stack([emb[center_id] for emb in self.pretrained_embs[self.list_data_dict[i]["dataset"]]], dim=1)
             data_dict['graph'] = graph
             data_dict['graph_emb'] = graph_emb
-
-
         return data_dict
 
 
@@ -873,36 +659,10 @@ def _train():
             return
         print(f"{training_args.output_dir} already exists!!!!")
 
-    if data_args.pretrained_embedding_type in ['sbert', 'simteg_sbert']:
-        model_args.mm_hidden_size = 384
-    elif data_args.pretrained_embedding_type in ["simteg_e5", "simteg_roberta", "roberta"]:
-        model_args.mm_hidden_size = 1024
-    elif data_args.pretrained_embedding_type in ["simteg"]:
-        model_args.mm_hidden_size = 1024*2+384
-    else:
-        raise ValueError
-    if data_args.template == "ND":
-        data_args.structure_embedding_dim = int((data_args.sample_neighbor_size ** (data_args.use_hop + 1) - 1) / (data_args.sample_neighbor_size - 1))
-        model_args.mm_hidden_size += data_args.structure_embedding_dim
+    model_args.mm_hidden_size = 384
     print(f"mm_hidden_size: {model_args.mm_hidden_size}")
 
     bnb_model_from_pretrained_args = {}
-    if training_args.bits in [4, 8]:
-        from transformers import BitsAndBytesConfig
-        bnb_model_from_pretrained_args.update(dict(
-            device_map={"": training_args.device},
-            load_in_4bit=training_args.bits == 4,
-            load_in_8bit=training_args.bits == 8,
-            quantization_config=BitsAndBytesConfig(
-                load_in_4bit=training_args.bits == 4,
-                load_in_8bit=training_args.bits == 8,
-                llm_int8_threshold=6.0,
-                llm_int8_has_fp16_weight=False,
-                bnb_4bit_compute_dtype=compute_dtype,
-                bnb_4bit_use_double_quant=training_args.double_quant,
-                bnb_4bit_quant_type=training_args.quant_type # {'fp4', 'nf4'}
-            )
-        ))
 
     model = LlagaMistralForCausalLM.from_pretrained(
         model_args.model_name_or_path,
@@ -914,12 +674,6 @@ def _train():
 
     if model_args.freeze_backbone:
         model.model.requires_grad_(False)
-
-    if training_args.bits in [4, 8]:
-        from peft import prepare_model_for_kbit_training
-        model.config.torch_dtype=(torch.float32 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
-
     if training_args.gradient_checkpointing:
         if hasattr(model, "enable_input_require_grads"):
             model.enable_input_require_grads()
@@ -928,62 +682,19 @@ def _train():
                 output.requires_grad_(True)
             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
-    if training_args.lora_enable:
-        from peft import LoraConfig, get_peft_model
-        lora_config = LoraConfig(
-            r=training_args.lora_r,
-            lora_alpha=training_args.lora_alpha,
-            target_modules=find_all_linear_names(model),
-            lora_dropout=training_args.lora_dropout,
-            bias=training_args.lora_bias,
-            task_type="CAUSAL_LM",
-        )
-        if training_args.bits == 16:
-            if training_args.bf16:
-                model.to(torch.bfloat16)
-            if training_args.fp16:
-                model.to(torch.float16)
-        rank0_print("Adding LoRA adapters...")
-        model = get_peft_model(model, lora_config)
 
-    if 'mpt' in model_args.model_name_or_path:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            model_max_length=training_args.model_max_length,
-            padding_side="right"
-        )
-    elif 'opt' in model_args.model_name_or_path:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            # model_max_length = 4096
-            model_max_length=training_args.model_max_length
-        )
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            cache_dir=training_args.cache_dir,
-            model_max_length=training_args.model_max_length,
-            padding_side="right",
-            use_fast=False,
-        )
 
-    if model_args.version == "v0":
-        if tokenizer.pad_token is None:
-            smart_tokenizer_and_embedding_resize(
-                special_tokens_dict=dict(pad_token="[PAD]"),
-                tokenizer=tokenizer,
-                model=model,
-            )
-    elif model_args.version == "v0.5":
-        tokenizer.pad_token = tokenizer.unk_token
-    else:
-        tokenizer.pad_token = tokenizer.unk_token
-        if model_args.version in conversation_lib.conv_templates:
-            conversation_lib.default_conversation = conversation_lib.conv_templates[model_args.version]
-        else:
-            conversation_lib.default_conversation = conversation_lib.conv_templates["vicuna_v1"]
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        model_args.model_name_or_path,
+        cache_dir=training_args.cache_dir,
+        model_max_length=training_args.model_max_length,
+        padding_side="right",
+        use_fast=False,
+    )
+
+    tokenizer.pad_token = tokenizer.unk_token
+    conversation_lib.default_conversation = conversation_lib.conv_templates[model_args.version]
+
 
     # if model_args.vision_tower is not None:
     model.get_model().initialize_graph_modules(
@@ -1004,26 +715,9 @@ def _train():
         for p in model.get_model().mm_projector.parameters():
             p.requires_grad = False
 
-    if training_args.bits in [4, 8]:
-        model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
-
     model.config.mm_use_graph_start_end = data_args.mm_use_graph_start_end = model_args.mm_use_graph_start_end
     training_args.mm_use_graph_start_end = model_args.mm_use_graph_start_end
     model.initialize_graph_tokenizer(model_args, tokenizer=tokenizer)
-
-    if training_args.bits in [4, 8]:
-        from peft.tuners.lora import LoraLayer
-        for name, module in model.named_modules():
-            if isinstance(module, LoraLayer):
-                if training_args.bf16:
-                    module = module.to(torch.bfloat16)
-            if 'norm' in name:
-                module = module.to(torch.float32)
-            if 'lm_head' in name or 'embed_tokens' in name:
-                if hasattr(module, 'weight'):
-                    if training_args.bf16 and module.weight.dtype == torch.float32:
-                        module = module.to(torch.bfloat16)
-
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
     trainer = LLaGATrainer(model=model,
@@ -1039,19 +733,7 @@ def _train():
 
     model.config.use_cache = True
 
-    if training_args.lora_enable:
-        state_dict = get_peft_state_maybe_zero_3(
-            model.named_parameters(), training_args.lora_bias
-        )
-        non_lora_state_dict = get_peft_state_non_lora_maybe_zero_3(
-            model.named_parameters()
-        )
-        if training_args.local_rank == 0 or training_args.local_rank == -1:
-            model.config.save_pretrained(training_args.output_dir)
-            model.save_pretrained(training_args.output_dir, state_dict=state_dict)
-            torch.save(non_lora_state_dict, os.path.join(training_args.output_dir, 'non_lora_trainables.bin'))
-    else:
-        safe_save_model_for_hf_trainer(trainer=trainer,
+    safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
 
 
