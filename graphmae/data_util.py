@@ -3,6 +3,24 @@ from data.chemmol.gen_data import MolOFADataset
 from graphmae.config import DATASET
 from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
 import torch
+import ogb 
+
+
+def eval_task(metric):
+    if metric == 'accuracy':
+        evaluator = ogb.nodeproppred.Evaluator(name='ogbn-arxiv')
+    elif metric == 'hits@100':
+        evaluator = ogb.linkproppred.Evaluator(name='ogbl-collab')
+    elif metric == 'f1':
+        evaluator = ogb.graphproppred.Evaluator(name='ogbg-code2')
+    elif metric == 'apr':
+        evaluator = ogb.graphproppred.Evaluator(name='ogbg-molpcba')
+    elif metric == 'auc':
+        evaluator = ogb.graphproppred.Evaluator(name='ogbg-molhiv')
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
+    return evaluator
+
 
 def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 

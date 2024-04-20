@@ -1,5 +1,9 @@
 from .edcoder import PreModel
-
+from .gat import GAT
+from torch_geometric.nn.models import GCN
+from .mlp import MLP
+import torch
+from ..config import DATASET as task_config
 
 def build_model(args):
     num_heads = args.num_heads
@@ -47,3 +51,65 @@ def build_model(args):
         concat_hidden=concat_hidden,
     )
     return model
+
+def build_model_backbone(args, in_dim, out_dim):
+    ## for supervised baseline, we only have encoder
+    ## encoding should be False
+    if args.encoder == 'gat':
+        return GAT(
+            in_dim, 
+            args.num_hidden,
+            out_dim,
+            num_layers=args.num_layers,
+            nhead=args.num_heads,
+            nhead_out=args.num_out_heads,
+            activation=args.activation,
+            feat_drop=args.in_drop,
+            attn_drop=args.attn_drop,
+            negative_slope=args.negative_slope,
+            residual=args.residual,
+            norm=create_norm(args.norm),
+            concat_out=True,
+            encoding=False
+        ) 
+    elif args.encoder == 'gcn':
+        return GCN(
+            in_dim,
+            args.num_hidden,
+            out_dim,
+            num_layers=args.num_layers,
+            dropout=args.in_drop,
+            activation=args.activation,
+            residual=args.residual,
+            norm=create_norm(args.norm),
+            encoding=False
+        )
+    elif args.encoder == 'mlp':
+        return MLP(
+            in_dim,
+            args.num_hidden,
+            out_dim,
+            num_layers=args.num_layers,
+            dropout=args.in_drop,
+            activation=args.activation,
+            norm=create_norm(args.norm),
+            encoding=False
+        )
+
+
+class TaskHeadModel(torch.nn.Module):
+    def __init__(self, args, in_dim, encoder_space_dim, task_config):
+        super(MultiheadModel, self).__init__()
+        self.encoder = build_model_backbone(args, in_dim, encoder_space_dim)
+        self.heads = {}
+        self.Gs = []
+        for d in args.pre_train_datasets:
+            dim = task_config[d]['task_dim']
+            t_head = torch.nn.Linear(encoder_space_dim, dim)
+            self.heads[d] = t_head
+        
+    
+    def forward(self, x, edge_index, head_name):
+        x = self.encoder(x, edge_index)
+        x = self.heads[head_name](x)
+        return x

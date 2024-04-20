@@ -11,21 +11,29 @@ from subgcon.utils_mp import Subgraph, preprocess
 from subgcon.models import SugbCon, Encoder, Scorer, Pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
-from graphmae.models import build_model
+from graphmae.models import build_model, TaskHeadModel
 import logging
 import os.path as osp
 from tqdm import tqdm
+from graphmae.config import DATASET
 
-def train(model, optimizer, loader, args, subgraph, scheduler, device):
+def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None):
     # Model training
     model.train()
     optimizer.zero_grad()
     avg_loss = 0
+    ce_loss = torch.nn.CrossEntropyLoss()
     for batch in loader:
-        index = batch.ptr
-        z, summary = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
-    
-        loss = model.loss(z, summary)
+        index = batch.ptr[:-1]
+        if model_type == 'subgcon':
+            z, summary = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+            loss = model.loss(z, summary)
+        elif model_type == 'graphmae':
+            loss, loss_item = model(batch.x.to(device), batch.edge_index.to(device))
+        elif model_type == 'cotrain':
+            ## mask and head_name should be provided for this case
+            output = model(batch.x.to(device), batch.edge_index.to(device), head_name)
+            loss = ce_loss(output[mask], batch.y[mask])
         loss.backward()
         optimizer.step()
         if scheduler is not None:
@@ -48,12 +56,12 @@ def get_all_node_emb(model, num_node, loader, args, device, level='node'):
     return z
     
     
-def test(model, data, loader, args, device):
+def node_level_test(model, dataset, loader, args, device):
     # Model testing
     model.eval()
-    num_node = data.x.size(0)
+    num_node = dataset.num_nodes
     with torch.no_grad():
-        all_emb = get_all_node_emb(model, num_node, loader, args, device)
+        all_emb = get_all_node_emb(model, num_node, loader, args, device, level = 'node')
         train_z = all_emb[data.train_mask]
         val_z = all_emb[data.val_mask]
         test_z = all_emb[data.test_mask]
@@ -65,6 +73,20 @@ def test(model, data, loader, args, device):
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc
 
+def link_level_test(model, dataset, loader, args, device):
+    pass 
+
+def graph_level_test(model, dataset, loader, args, device):
+    pass
+
+
+def test(model, dataset, loader, args, device, level='node'):
+    if level == 'node':
+        return node_level_test(model, dataset, loader, args, device)
+    elif level == 'link':
+        return link_level_test(model, dataset, loader, args, device)
+    elif level == 'graph':
+        return graph_level_test(model, dataset, loader, args, device)
 
 
 def main(args):
@@ -111,6 +133,8 @@ def main(args):
             scorer=Scorer(args.num_hidden)).to(device)
     elif args.method == 'graphmae':
         model = build_model(args)
+    elif args.method == 'cotrain':
+        model = build_model(args)
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -133,19 +157,19 @@ def main(args):
         ## pre-train stage
         for i, G in enumerate(datas):
             train_loader = G.search(batch_size = batch_size, shuffle = True)
-            import ipdb; ipdb.set_trace()
-        
+            loss = train(model, optimizer, train_loader, args, scheduler, device)
+            logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
         ## evaluation part
         eval_val = []
         eval_test = []
-        for i, G in enumerate(graphs):
-            
-            subgraph.build()
-            val_acc, test_acc = test(model, G, subgraph, args, device)
-            eval_val.append(val_acc)
-            eval_test.append(test_acc)
+        for i, G in enumerate(datas):
+            test_loader = G.search(batch_size = batch_size, shuffle = False)
+
+            val_res, test_res = test(model, G, test_loader, args, device, model_type = args.method, mask = G.train_mask, head_name = args.pre_train_datasets[i])
+            eval_val.append(val_res)
+            eval_test.append(test_res)
         for i in range(len(graphs)):
-            logging.info("Epoch {} Dataset {} Val-Acc {} Test-Acc {}".format(e, args.pre_train_datasets[i], eval_val[i], eval_test[i]))
+            logging.info("Epoch {} Dataset {} Val-{} {} Test-{} {}".format(e, args.downstream_datasets[i], DATASET[args.downstream_datasets[i]]['metric'], eval_val[i], DATASET[args.downstream_datasets[i]]['metric'], eval_test[i]))
         avg_val = np.mean(eval_val)
         if avg_val > best_avg_val:
             best_avg_val = avg_val
@@ -167,6 +191,8 @@ def main(args):
 if __name__ == '__main__':
     args = build_args()
     print(args)
+    if not args.not_same_pretrain_downstream:
+        args.downstream_datasets = args.pre_train_datasets
     main(args)
     
 

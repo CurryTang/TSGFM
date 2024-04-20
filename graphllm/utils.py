@@ -113,33 +113,6 @@ def get_feature_similarity(edge_index, features, k = 0):
         aggr_features = spmm(edge_index, value, num_nodes, num_nodes, features)
         return _feature_similarity(aggr_features.cpu())
 
-class MP(MessagePassing):
-    def __init__(self):
-        super().__init__(aggr='add')  # "Add" aggregation (Step 5).
-
-    def partition_propagate(self, data_edge_index, x, norm, select_idx=None, chunk_size=800, cuda=False):
-        if select_idx is None:
-            n = x.shape[0]
-            select_idx = torch.arange(n)
-        else:
-            n = select_idx.shape[0]
-
-        os=[]
-        for i in trange(0, n, chunk_size):
-            key=select_idx[i:i+chunk_size]
-            subset, edge_index, mapping, edge_mask = k_hop_subgraph(key, 1, data_edge_index, relabel_nodes=True)
-            if cuda:
-                o =  self.propagate(edge_index.cuda(), x=x[subset].cuda(), norm=norm[edge_mask].cuda())
-            else:
-                o = self.propagate(edge_index, x=x[subset], norm=norm[edge_mask])
-            os.append(o[mapping])
-
-        return torch.cat(os, dim=0)
-
-
-    def message(self, x_j, norm):
-        return norm.view(-1, 1) * x_j
-
 def dump_jsonl(data, json_filepath):
     path_name = osp.dirname(json_filepath)
     os.makedirs(path_name, exist_ok=True)
@@ -188,7 +161,11 @@ def get_mask(data, i = 0):
     """
     if hasattr(data, 'train_mask'):
         if isinstance(data.train_mask, torch.Tensor):
-            return data.train_mask, data.val_mask, data.test_mask
+            if data.train_mask.dim() == 1:
+                return data.train_mask, data.val_mask, data.test_mask
+            else:
+                ## only for wikics
+                return data.train_mask[:, i], data.val_mask[:, i], data.test_mask
         else:
             if i < len(data.train_mask):
                 return data.train_mask[i], data.val_mask[i], data.test_mask[i]

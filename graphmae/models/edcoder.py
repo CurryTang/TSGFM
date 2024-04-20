@@ -205,7 +205,10 @@ class PreModel(nn.Module):
 
         return out_x, (mask_nodes, keep_nodes)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, batch = None, index = None):
+        """
+            batch and index are used to fill the position
+        """
         # ---- attribute reconstruction ----
         loss = self.mask_attr_prediction(x, edge_index)
         loss_item = {"loss": loss.item()}

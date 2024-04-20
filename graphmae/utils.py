@@ -53,6 +53,7 @@ def build_args():
     parser.add_argument('--mode', type=str, default="cotrain")
     parser.add_argument("--pre_train_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed", "arxiv", "arxiv23"])
     parser.add_argument("--downstream_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed"])
+    parser.add_argument("--not_same_pretrain_downstream", action="store_true", default=False)
     ## 
     parser.add_argument("--device", type=int, default=-1)
     parser.add_argument("--max_epoch", type=int, default=200,

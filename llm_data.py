@@ -35,39 +35,38 @@ def get_arxiv_mask():
 if __name__ == '__main__':
     train_mask, val_mask, test_mask = get_arxiv_mask()
     torch.save({'train': train_mask, 'valid': val_mask, 'test': test_mask}, 'arxiv_mask.pt')
-    # preprocessed_data_path = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/cache_data_minilm'
-    # raw_data_dir = "/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/data/single_graph/{}/categories.csv"
+    preprocessed_data_path = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/cache_data_minilm'
+    raw_data_dir = "/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/data/single_graph/{}/categories.csv"
     # ## we first sanity check the simplest one
     # node_level_datasets = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookchild', 'bookhis', 'elecomp', 'elephoto', 'sportsfit', 'products']
+    node_level_datasets = ['wikics']
     # #node_level_datasets = []
     # link_level_datasets = []
     # # link_level_datasets = ['citeseer']
     
-    # ## move raw label names
-    # for dataset_name in node_level_datasets:
-    #     orig_file = raw_data_dir.format(dataset_name)
-    #     full_name = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/outdata'         
-    #     full_name = osp.join(full_name, dataset_name)
-    #     os.system(f"cp {orig_file} {full_name}")
+    ## move raw label names
+    for dataset_name in node_level_datasets:
+        orig_file = raw_data_dir.format(dataset_name)
+        full_name = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/outdata'         
+        d_full_name = osp.join(full_name, dataset_name, 'categories.csv')
+        path_name = osp.join(full_name, dataset_name)
+        os.makedirs(path_name, exist_ok=True)
+        os.system(f"cp {orig_file} {d_full_name}")
 
-    # for dataset_name in node_level_datasets:
-    #     try:
-    #         node_data = load_local_data(dataset_name)
-    #         if dataset_name == 'arxiv':
-    #             train_mask, val_mask, test_mask = get_arxiv_mask()
-    #             node_data.train_mask = train_mask
-    #             node_data.val_mask = val_mask
-    #             node_data.test_mask = test_mask
-    #         full_name = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/outdata'
-    #         full_name = osp.join(full_name, dataset_name)
-    #         generate_node_level_prompt_files(full_name, node_data)
-    #         print(f'Node level data for {dataset_name} has been generated')
+    for dataset_name in node_level_datasets:
+        node_data = load_local_data(dataset_name)
+        if dataset_name == 'arxiv':
+            train_mask, val_mask, test_mask = get_arxiv_mask()
+            node_data.train_mask = train_mask
+            node_data.val_mask = val_mask
+            node_data.test_mask = test_mask
+        full_name = '/mnt/home/chenzh85/graphlang/PyGFM/MyOFA/outdata'
+        full_name = osp.join(full_name, dataset_name)
+        generate_node_level_prompt_files(full_name, node_data)
+        print(f'Node level data for {dataset_name} has been generated')
 
-    #         generate_multi_hop_x(node_data, node_data.node_text_feat, full_name)
-    #         print(f'Multi-hop data for {dataset_name} has been generated')
-    #     except Exception as e:
-    #         print(f'Error in generating node level data for {dataset_name}')
-    #         print(e)
+        generate_multi_hop_x(node_data, node_data.node_text_feat, full_name)
+        print(f'Multi-hop data for {dataset_name} has been generated')
 
     # for dataset_name in link_level_datasets:
     #     link_data = load_local_data(dataset_name)

@@ -625,8 +625,12 @@ class MultiDataset(DatasetWithCollate):
                 self.inpatience[i] = 0
             else:
                 self.inpatience[i] += 1
-            if self.inpatience[i] > self.patience[i]:
-                self.dataset_multiple[i] = max(self.min_ratio[i],
+            try:
+                if self.inpatience[i] > self.patience[i]:
+                    self.dataset_multiple[i] = max(self.min_ratio[i],
                                                self.dataset_multiple[i] / 2)  # self.inpatience[i] = 0
+                except Exception as e:
+                    print(e)
+                    print("Update dataset multiple failed")
         self.compute_sizes()
         self.performance_record.append(metric)
