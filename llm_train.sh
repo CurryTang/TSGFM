@@ -1,20 +1,20 @@
 #!/bin/bash
 
+dataset=${1:-"arxiv"}
+task=${2:-"nc"}
 max_len=4096
 sample_size=10
 model="mistral"
-task="nc"
-dataset="cora-citeseer-pubmed-arxiv-arxiv23"
-bs="16"
+bs="4"
 emb="sbert"
 cache_dir="./llmcheckpoint"
+report_to="none"
 
-
-use_hop=5
+use_hop=4
 template="HO"
 projector_type="linear"
-prefix=llaga-mistral-7b-hf-${emb}-${use_hop}-hop-token-${projector_type}-projector
-model_base=mistralai/Mistral-7B-v0.1
+prefix=llaga-mistral-7b-hf-${emb}-${use_hop}-hop-token-${projector_type}-${dataset}-${task}-projector
+model_base="../Mistral-7B-v0.1"
 mode="mistral_instruct"
 
 ## determine parameters based on your gpu types
@@ -26,7 +26,7 @@ if [[ $gpu_info == *"Tesla V100"* ]]; then
     fp16=True
     bf16=False
     tf32=False
-elif [[ $gpu_info == *"Tesla A100"* ]]; then
+elif [[ $gpu_info == *"A100"* ]]; then
     echo "Tesla A100 detected (GPU 0)"
     fp16=False
     bf16=True
@@ -39,8 +39,7 @@ fi
 
 echo "PREFIX:  ${prefix}"
 
-WANDB_DISABLED=true
-singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 graphllm.py \
+WANDB_MODE=offline python3.8 graphllm.py \
 --model_name_or_path ${model_base} \
 --version ${mode} \
 --cache_dir  ${cache_dir} \
@@ -50,7 +49,7 @@ singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 graphllm.py \
 --mm_use_graph_patch_token False \
 --fp16 ${fp16} \
 --bf16 ${bf16} \
---output_dir  ./checkpoints/${dataset}/${prefix}_${task} \
+--output_dir  ./checkpoints/${prefix} \
 --num_train_epochs 1 \
 --per_device_train_batch_size ${bs} \
 --per_device_eval_batch_size 4 \
@@ -66,10 +65,11 @@ singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 graphllm.py \
 --model_max_length ${max_len} \
 --gradient_checkpointing True \
 --lazy_preprocess True \
---report_to wandb \
+--report_to "${report_to}" \
 --use_hop ${use_hop} \
 --sample_neighbor_size ${sample_size} \
 --mm_projector_type ${projector_type} \
 --use_task ${task} \
 --use_dataset ${dataset} \
---template ${template}
+--template ${template} \
+--data_saved_path "./cache_data_minilm"

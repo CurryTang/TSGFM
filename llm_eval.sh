@@ -1,17 +1,18 @@
 #!/bin/bash
 
-model_path="/path/to/projector"
-model_base="lmsys/vicuna-7b-v1.5-16k" #meta-llama/Llama-2-7b-hf
-mode="v1" # use 'llaga_llama_2' for llama and "v1" for others
-dataset="arxiv" #test dataset
-task="nc" #test task
-emb="simteg"
+dataset=${1:-"cora"} #test dataset
+task=${2:-"lp"} #test task
+model_path=${3:-"/root/paddlejob/workspace/env_run/MyOFA/checkpoints/cora/llaga-mistral-7b-hf-sbert-4-hop-token-linear-projector_nc"}
+pretrain_data=${4:-"cora.3-citeseer.3"}
+model_base="../Mistral-7B-v0.1" #meta-llama/Llama-2-7b-hf
+mode="mistral_instruct" # use 'llaga_llama_2' for llama and "v1" for others
+emb="sbert"
 use_hop=4
 sample_size=10
 template="HO" # or ND
-output_path="/path/to/output"
+output_path="./checkpoints/${dataset}_${task}_${pretrain_data}"
 
-python eval/eval_pretrain.py \
+python3.8 eval_pretrain.py \
 --model_path ${model_path} \
 --model_base ${model_base} \
 --conv_mode  ${mode} \
@@ -21,5 +22,8 @@ python eval/eval_pretrain.py \
 --sample_neighbor_size ${sample_size} \
 --answers_file ${output_path} \
 --task ${task} \
---cache_dir ../../checkpoint \
---template ${template}
+--cache_dir "./llmcheckpoint" \
+--template ${template} \
+--start "-1" \
+--end "2000"
+
