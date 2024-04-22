@@ -40,7 +40,7 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.link = 'node'
         self.name = name
         self.output_path = output_path
-        self.output_name = osp.join(output_path, f"{name}_subgraphs_nc.pt")
+        self.output_name = osp.join(output_path, f"{name}_subgraphs_nc_neighbors_{topk}.pt")
         self.data = data
         self.alpha = alpha
         self.eps = eps
@@ -83,7 +83,7 @@ class LinkSubgraphDataset(SubgraphDataset):
         self.level = 'link'
         self.name = name
         self.output_path = output_path
-        self.output_name = osp.join(output_path, f"{name}_subgraphs_lp.pt")
+        self.output_name = osp.join(output_path, f"{name}_subgraphs_lp_neighbors_{topk}.pt")
         self.data = data
         self.alpha = alpha
         self.eps = eps

@@ -18,7 +18,7 @@ class GraphTextDataset(DatasetWithCollate, ABC):
     and prompt graph construction.
     """
 
-    def __init__(self, graph: Union[pyg.data.Data, list[pyg.data.Data]], process_label_func: Callable, **kwargs):
+    def __init__(self, graph: Union[pyg.data.Data, list[pyg.data.Data]], process_label_func: Union[Callable, str], **kwargs):
         """
         Args:
             graph: Main graph objects, one single graph for single graph dataset, and list of graphs
@@ -141,6 +141,8 @@ class GraphTextDataset(DatasetWithCollate, ABC):
             trimed_class = torch.zeros((1, len(self.class_emb)))
             trimed_class[0, label] = 1
             return label, self.class_emb, trimed_class
+        elif self.process_label_func == "head":
+            return label, None, None
         else:
             return self.process_label_func(self.class_emb, label)
 
@@ -629,8 +631,8 @@ class MultiDataset(DatasetWithCollate):
                 if self.inpatience[i] > self.patience[i]:
                     self.dataset_multiple[i] = max(self.min_ratio[i],
                                                self.dataset_multiple[i] / 2)  # self.inpatience[i] = 0
-                except Exception as e:
-                    print(e)
-                    print("Update dataset multiple failed")
+            except Exception as e:
+                print(e)
+                print("Update dataset multiple failed")
         self.compute_sizes()
         self.performance_record.append(metric)

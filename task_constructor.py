@@ -363,6 +363,9 @@ def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, g
 #   process_label_function         #
 ####################################
 
+def keep_label(embs, label):
+    return label.long(), embs, Nones
+
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))
     binary_rep[0, label.squeeze().to(torch.long)] = 1
@@ -560,7 +563,7 @@ class UnifiedTaskConstructor:
             return self.stage_names[stage_config["stage"]].index(stage_name)
         global_data = self.get_global_data(dataset_config)
         prompt_feats = data.get_prompt_text_feat(dataset_config["task_level"])
-        data_name = dataset_config["dataset_name"]
+        data_name = stage_config["dataset"]
         data = globals()[dataset_config["construct"]](dataset=data, split=split, split_name=stage_config["split_name"],
                                                       prompt_feats=prompt_feats, to_bin_cls_func=globals()[
                 dataset_config["process_label_func"]] if dataset_config.get("process_label_func") else None,

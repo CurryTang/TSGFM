@@ -173,7 +173,7 @@ class BinGraphAttModel(torch.nn.Module):
 
 
 class MultiHeadModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_names, data_config_lookup, dropout=0.0):
+    def __init__(self, model, indim, outdim, task_names, data_config_lookup, dropout=0.0):
         super().__init__()
         self.model = model
         self.in_proj = nn.Linear(indim, outdim)
@@ -183,7 +183,7 @@ class MultiHeadModel(torch.nn.Module):
         self.tmlp = {}
         for name in task_names:
             task_dim = data_config_lookup[name]["num_classes"]
-            self.tmlp[name] = MLP([outdim, task_dim], dropout=dropout)
+            self.tmlp[name] = MLP([2 * outdim, 2 * outdim, outdim, 2])
     
     def initial_projection(self, g):
         g.x = self.in_proj(g.x)
@@ -191,11 +191,27 @@ class MultiHeadModel(torch.nn.Module):
         return g
     
     def forward(self, g):
-        this_task_name = g.task_name[0]
+        this_task_name = g.dataset_name[0]
         g = self.initial_projection(g)
-        emb = torch.stack(self.model(g), dim=1)
-        query = g.x.unsqueeze(1)
-        emb = self.att(emb, query, emb)[0].squeeze()
+        emb = self.model(g)
+        float_mask = g.target_node_mask.to(torch.float)
+        target_emb = float_mask.view(-1, 1) * emb
+        n_count = global_add_pool(float_mask, g.batch, g.num_graphs)
+        class_emb = global_add_pool(target_emb, g.batch, g.num_graphs)
+        class_emb = class_emb / n_count.view(-1, 1)
+        rep_class_emb = class_emb.repeat_interleave(g.num_classes, dim=0)
+        head = self.tmlp[this_task_name].to(g.x.device)
+        res = head(
+            torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
+        )
+        self.tmlp[this_task_name] = self.tmlp[this_task_name].to('cpu')
+        return res
+
+
+
+
+
+
 
 
 class OFAMLP(torch.nn.Module):

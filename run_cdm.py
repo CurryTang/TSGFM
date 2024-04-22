@@ -93,6 +93,7 @@ def main(params):
         text_dataset, num_workers=params.num_workers
     )
 
+
     eval_data = text_dataset["val"] + text_dataset["test"]
     val_state = [dt.state_name for dt in text_dataset["val"]]
     test_state = [dt.state_name for dt in text_dataset["test"]]
@@ -154,9 +155,9 @@ def main(params):
             out_dim,
             out_dim,
             drop_ratio=params.dropout,
-            JK=params.JK,
+            JK="last",
         )
-        model = MultiHeadModel(gnn, out_dim, task_names, data_config_lookup, dropout=params.dropout)
+        model = MultiHeadModel(gnn, in_dim, out_dim, task_names, data_config_lookup, dropout=params.dropout)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=params.lr, weight_decay=params.l2
     )

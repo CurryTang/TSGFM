@@ -6,6 +6,7 @@ import random
 import numpy as np
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
+from torch_geometric.nn import global_mean_pool
 from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
 from subgcon.utils_mp import Subgraph, preprocess
 from subgcon.models import SugbCon, Encoder, Scorer, Pool
@@ -41,17 +42,22 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
         avg_loss += loss.item()
     return loss.item() / len(loader)
 
-def get_all_node_emb(model, num_node, loader, args, device, level='node'):
+def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln='subgcon'):
     # Obtain central node embs from subgraphs 
     model.eval()
     z = []
     for batch in loader:
-        index = batch.ptr
-        node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+        index = batch.ptr[:-1]
+        if modeln == 'subgcon':
+            node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+        elif modeln == 'graphmae':
+            out = model.embed(batch.x.to(device), batch.edge_index.to(device))
+            node = out[index]
+            graph = global_mean_pool(out, batch.batch.to(device))
         if level == 'graph':
             z.append(graph)
         else:
-            z.append(node[batch.ptr[:-1]])
+            z.append(node)
     z = torch.cat(z, dim = 0)
     return z
     
@@ -61,14 +67,14 @@ def node_level_test(model, dataset, loader, args, device):
     model.eval()
     num_node = dataset.num_nodes
     with torch.no_grad():
-        all_emb = get_all_node_emb(model, num_node, loader, args, device, level = 'node')
-        train_z = all_emb[data.train_mask]
-        val_z = all_emb[data.val_mask]
-        test_z = all_emb[data.test_mask]
+        all_emb = get_all_node_emb(model, num_node, loader, args, device, level = 'node', modeln=args.method)
+        train_z = all_emb[dataset.train_mask]
+        val_z = all_emb[dataset.val_mask]
+        test_z = all_emb[dataset.test_mask]
     
-    train_y = data.y[data.train_mask]
-    val_y = data.y[data.val_mask]
-    test_y = data.y[data.test_mask]
+    train_y = dataset.data.y[dataset.train_mask]
+    val_y = dataset.data.y[dataset.val_mask]
+    test_y = dataset.data.y[dataset.test_mask]
     val_acc, test_acc = model.test(train_z, train_y, val_z, val_y, test_z, test_y)
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc
@@ -157,7 +163,7 @@ def main(args):
         ## pre-train stage
         for i, G in enumerate(datas):
             train_loader = G.search(batch_size = batch_size, shuffle = True)
-            loss = train(model, optimizer, train_loader, args, scheduler, device)
+            loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method)
             logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
         ## evaluation part
         eval_val = []
@@ -165,10 +171,10 @@ def main(args):
         for i, G in enumerate(datas):
             test_loader = G.search(batch_size = batch_size, shuffle = False)
 
-            val_res, test_res = test(model, G, test_loader, args, device, model_type = args.method, mask = G.train_mask, head_name = args.pre_train_datasets[i])
+            val_res, test_res = test(model, G, test_loader, args, device, level = DATASET[args.pre_train_datasets[i]]['level'])
             eval_val.append(val_res)
             eval_test.append(test_res)
-        for i in range(len(graphs)):
+        for i in range(len(datas)):
             logging.info("Epoch {} Dataset {} Val-{} {} Test-{} {}".format(e, args.downstream_datasets[i], DATASET[args.downstream_datasets[i]]['metric'], eval_val[i], DATASET[args.downstream_datasets[i]]['metric'], eval_test[i]))
         avg_val = np.mean(eval_val)
         if avg_val > best_avg_val:
@@ -177,7 +183,7 @@ def main(args):
             test_accs = eval_test
     
     logging.info("Best Avg Val {}".format(best_avg_val))
-    for i in range(len(graphs)):
+    for i in range(len(datas)):
         logging.info("Dataset: {} Best Val {} Test {}".format(args.pre_train_datasets[i], val_accs[i], test_accs[i]))
     return best_avg_val, val_accs, test_accs    
             

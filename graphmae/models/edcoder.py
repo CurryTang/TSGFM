@@ -12,6 +12,8 @@ from graphmae.utils import create_norm
 from torch_geometric.utils import dropout_edge
 from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_geometric.nn.models import GCN
+from sklearn.linear_model import LogisticRegression
+
 
 
 def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropout, activation, residual, norm, nhead, nhead_out, attn_drop, negative_slope=0.2, concat_out=True) -> nn.Module:
@@ -248,6 +250,17 @@ class PreModel(nn.Module):
     def embed(self, x, edge_index):
         rep = self.encoder(x, edge_index)
         return rep
+    
+    def test(self, train_z, train_y, val_z, val_y, test_z, test_y, solver='liblinear',
+             multi_class='auto', *args, **kwargs):
+        r"""Evaluates latent space quality via a logistic regression downstream task."""
+        clf = LogisticRegression(solver=solver, multi_class=multi_class, *args,
+                                 **kwargs).fit(train_z.detach().cpu().numpy(),
+                                               train_y.detach().cpu().numpy())
+        val_acc = clf.score(val_z.detach().cpu().numpy(), val_y.detach().cpu().numpy())
+        test_acc = clf.score(test_z.detach().cpu().numpy(), test_y.detach().cpu().numpy())
+        return val_acc, test_acc
+    
 
     @property
     def enc_params(self):

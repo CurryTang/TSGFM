@@ -103,7 +103,7 @@ class SugbCon(torch.nn.Module):
         return TotalLoss
 
 
-    def test(self, train_z, train_y, val_z, val_y, test_z, test_y, solver='lbfgs',
+    def test(self, train_z, train_y, val_z, val_y, test_z, test_y, solver='liblinear',
              multi_class='auto', *args, **kwargs):
         r"""Evaluates latent space quality via a logistic regression downstream task."""
         clf = LogisticRegression(solver=solver, multi_class=multi_class, *args,
