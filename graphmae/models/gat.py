@@ -123,7 +123,7 @@ class GATConv(MessagePassing):
         if residual:
             if self.in_channels != out_channels * heads:
                 self.res_fc = nn.Linear(
-                    self.in_channels, heads * out_channels, bias=False)
+                    heads * out_channels, heads * out_channels, bias=False)
             else:
                 self.res_fc = nn.Identity()
         else:
@@ -215,8 +215,9 @@ class GATConv(MessagePassing):
         out = self.propagate(edge_index, x=x, alpha=alpha, size=size)
         # residual
         if self.res_fc is not None:
+            x_dst = x_dst.view(-1, self.heads * self.out_channels)
             # Use -1 rather than self._num_heads to handle broadcasting
-            resval = self.res_fc(x_dst).view(x_dst.shape[:-1], -1, self.out_channels)
+            resval = self.res_fc(x_dst).view(x_dst.shape[0], -1, self.out_channels)
             out = out + resval
 
         if self.concat:

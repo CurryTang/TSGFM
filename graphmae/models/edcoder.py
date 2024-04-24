@@ -42,7 +42,7 @@ def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropo
             out_channels=out_dim,
             dropout=dropout,
             act=activation,
-            norm=norm
+            norm=create_norm(norm)
         )
     elif m_type == "gin":
         mod = GIN(
@@ -53,7 +53,7 @@ def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropo
             dropout=dropout,
             activation=activation,
             residual=residual,
-            norm=norm,
+            norm=create_norm(norm),
             encoding=(enc_dec == "encoding"),
         )
     elif m_type == "mlp":
@@ -134,7 +134,7 @@ class PreModel(nn.Module):
             attn_drop=attn_drop,
             negative_slope=negative_slope,
             residual=residual,
-            norm=norm,
+            norm=create_norm(norm),
         )
 
         # build decoder for attribute prediction
@@ -152,7 +152,7 @@ class PreModel(nn.Module):
             attn_drop=attn_drop,
             negative_slope=negative_slope,
             residual=residual,
-            norm=norm,
+            norm=create_norm(norm),
             concat_out=True,
         )
 

@@ -56,9 +56,9 @@ def get_data(dset):
                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]},
                        "e2e_link": {"noi_node_text_feat": ["noi_node_text_feat", [1]],
                       "class_node_text_feat": ["class_node_text_feat",
-                                               torch.arange(len(label_text), len(label_text) + len(edge_label_text))],
+                                               torch.arange(len(label_texts), len(label_texts) + len(edge_label_text))],
                       "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}, 
                       "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                     "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_text))],
+                     "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_texts))],
                      "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
     return ([pyg_data.data], [node_texts, edge_text, prompt_text, label_texts, prompt_edge_text, ], prompt_text_map,)

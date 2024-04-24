@@ -20,6 +20,22 @@ from tensorboardX import SummaryWriter
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+def update_namespace(namespace, update_dict):
+  """
+  Updates the values in a namespace using a dictionary.
+
+  Args:
+      namespace: The namespace object to be updated.
+      update_dict: A dictionary containing keys and values to be updated in the namespace.
+
+  Raises:
+      AttributeError: If an attribute in the update_dict is not found in the namespace.
+  """
+  for key, value in update_dict.items():
+    if not hasattr(namespace, key):
+      print(f"warning: Namespace does not have attribute: {key}")
+    setattr(namespace, key, value)
+
 
 def accuracy(y_pred, y_true):
     y_true = y_true.squeeze().long()
@@ -55,8 +71,8 @@ def build_args():
     parser.add_argument("--downstream_datasets", type=str, nargs='+', default=["cora", "citeseer", "pubmed"])
     parser.add_argument("--not_same_pretrain_downstream", action="store_true", default=False)
     ## 
-    parser.add_argument("--device", type=int, default=-1)
-    parser.add_argument("--max_epoch", type=int, default=200,
+    parser.add_argument("--device", type=int, default=0)
+    parser.add_argument("--max_epoch", type=int, default=20,
                         help="number of training epochs")
     parser.add_argument("--warmup_steps", type=int, default=-1)
 
@@ -95,13 +111,14 @@ def build_args():
     parser.add_argument("--max_epoch_f", type=int, default=30)
     parser.add_argument("--lr_f", type=float, default=0.001, help="learning rate for evaluation")
     parser.add_argument("--weight_decay_f", type=float, default=0.0, help="weight decay for evaluation")
-    parser.add_argument("--linear_prob", action="store_true", default=False)
+    parser.add_argument("--linear_prob", action="store_true", default=True)
     
     parser.add_argument("--load_model", action="store_true")
     parser.add_argument("--save_model", action="store_true")
     parser.add_argument("--use_cfg", action="store_true")
     parser.add_argument("--logging", action="store_true")
     parser.add_argument("--scheduler", action="store_true", default=False)
+    parser.add_argument("--lrtype", type=str, default="lambda")
     parser.add_argument("--concat_hidden", action="store_true", default=False)
 
     # for graph classification
@@ -112,6 +129,12 @@ def build_args():
     parser.add_argument("--sb", type=str, default=".")
 
     parser.add_argument("--feature_dim", type=int, default=384)
+    parser.add_argument("--sample", default=1., type=float)
+    parser.add_argument("--split_mode", default="subgraph", type=str)
+    parser.add_argument("--warmup", action="store_true", default=False)
+    parser.add_argument("--embed_mode", default="llm", type=str)
+    parser.add_argument("--backbone", default="gcn_node", type=str) 
+    parser.add_argument("--count", type=int, default=3)
     args = parser.parse_args()
     return args
 

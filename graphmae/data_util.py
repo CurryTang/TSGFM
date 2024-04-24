@@ -4,6 +4,7 @@ from graphmae.config import DATASET
 from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
 import torch
 import ogb 
+from torch_geometric.utils import index_to_mask, to_undirected
 
 
 def eval_task(metric):
@@ -41,7 +42,12 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
         raise ValueError(f"File not found: {path}")
     data = torch.load(path)[0]
     feature = data.node_text_feat
-    edge_index = data.edge_index
+    data.y = data.y.view(-1)
+    # edge_index = data.edge_index
+    # if dataset != 'arxiv23':
+    data.edge_index = to_undirected(data.edge_index)
+    data.x = feature
+    m_size = data.x.size(0)
     ## the following is for downstream tasks
     if not link:
         if hasattr(data, "train_mask"):
@@ -59,7 +65,6 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
             test_mask = data.test_masks[0]
         elif hasattr(data, 'splits'):
             train_mask, val_mask, test_mask = [index_to_mask(data.splits['train'], size=m_size)], [index_to_mask(data.splits['valid'], size=m_size)], [index_to_mask(data.splits['test'], size = m_size)]
-    data.x = feature
     if not link:
         data.train_mask = train_mask
         data.val_mask = val_mask
@@ -76,18 +81,20 @@ def unify_dataset_loader(dataset_names, args):
     ds = []
     for d in dataset_names:
         level = DATASET[d]['level']
+        task_dim = DATASET[d]['task_dim']
         if level == 'node':
             data = load_one_tag_dataset(d, args.tag_data_path)
             output_path = osp.join(args.cache_data_path, d)
-            dataset = NodeSubgraphDataset(data, output_path, args.subgraph_size, name=d)
+            dataset = NodeSubgraphDataset(data, output_path, args.subgraph_size, name=d, sample=args.sample, split_mode=args.split_mode)
             ds.append(dataset)
         elif level == 'link':
             data = load_one_tag_dataset(d, args.tag_data_path)
-            output_path = osp.join(args.cache_data_path, d)
-            dataset = LinkSubgraphDataset(data, output_path, args.subgraph_size, name=d)
+            clear_d = d.split('-')[0]
+            output_path = osp.join(args.cache_data_path, clear_d)
+            dataset = LinkSubgraphDataset(data, output_path, args.subgraph_size, name=d, split_mode=args.split_mode)
             ds.append(dataset)
         elif level == 'graph':
-            dataset = GraphSubgraphDataset(d, args.sb, args.subgraph_size)
+            dataset = GraphSubgraphDataset(d, args.sb, args.tag_data_path, task_dim)
             ds.append(dataset)
         else:
             raise ValueError(f"Unknown dataset level: {level}")

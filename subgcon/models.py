@@ -17,7 +17,7 @@ class Encoder(nn.Module):
         self.conv = GCNConv(in_channels, self.hidden_channels) 
         self.prelu = nn.PReLU(self.hidden_channels)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr=None):
         x1 = self.conv(x, edge_index)
         x1 = self.prelu(x1)
         return x1 
@@ -71,9 +71,9 @@ class SugbCon(torch.nn.Module):
         reset(self.encoder)
         reset(self.pool)
         
-    def forward(self, x, edge_index, batch=None, index=None):
+    def forward(self, x, edge_index, batch=None, index=None, edge_attr=None):
         r""" Return node and subgraph representations of each node before and after being shuffled """
-        hidden = self.encoder(x, edge_index)
+        hidden = self.encoder(x, edge_index, edge_attr)
         if index is None:
             return hidden
         

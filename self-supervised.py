@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 import torch
 
-from graphmae.utils import (
+from graphmae_dgl.utils import (
     WandbLogger,
     build_args,
     create_optimizer,
@@ -13,10 +13,10 @@ from graphmae.utils import (
     load_best_configs,
     show_occupied_memory,
 )
-from graphmae.models import build_model
-from graphmae.lc_sampler import setup_training_dataloder, setup_multiple_training_dataloder, setup_saint_dataloader, drop_edge
-from graphmae.evaluation import linear_probing_minibatch, finetune, linear_probing_full_batch
-from graphmae.data_util import load_downstream_dataset, load_pretrain_dataset, mask_to_split_idx
+from graphmae_dgl.models import build_model
+from graphmae_dgl.lc_sampler import setup_training_dataloder, setup_multiple_training_dataloder, setup_saint_dataloader, drop_edge
+from graphmae_dgl.evaluation import linear_probing_minibatch, finetune, linear_probing_full_batch
+from graphmae_dgl.data_util import load_downstream_dataset, load_pretrain_dataset, mask_to_split_idx
 from bgrl.bgrl import build_bgrl_model, drop_feature_edges, CosineDecayScheduler, compute_representations
 from torch import cosine_similarity
 import copy
@@ -49,7 +49,7 @@ def evaluate(
     print(f"num_train: {num_train}, num_val: {num_val}, num_test: {num_test}")
 
     
-    if args.method == 'graphmae':
+    if args.method == 'graphmae_dgl':
         if linear_prob:
             final_acc, estp_acc = linear_probing_full_batch(model, graph, feats, num_classes, lr_f, weight_decay_f, max_epoch_f, device, mute=True)
         else:
@@ -91,7 +91,7 @@ def pretrain(args, model, graphs, downstream_datas, max_epoch, device, use_sched
 
             for batch_g in epoch_iter:
                 model.train()
-                if args.method == 'graphmae':
+                if args.method == 'graphmae_dgl':
                     if drop_edge_rate > 0:
                         x = batch_g.ndata['x']
                         targets = torch.arange(x.shape[0], device=x.device, dtype=torch.long)
@@ -123,7 +123,7 @@ def pretrain(args, model, graphs, downstream_datas, max_epoch, device, use_sched
                     loss.backward()
                     optimizer.step()
                     model.update_target_network(mm)
-                if args.method == 'graphmae':
+                if args.method == 'graphmae_dgl':
                     optimizer.zero_grad()
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
@@ -148,7 +148,7 @@ def pretrain(args, model, graphs, downstream_datas, max_epoch, device, use_sched
 
 def downstream_task(args, model, device, downstream_datas, final_accs,
                     lr_f, weight_decay_f, max_epoch_f,batch_size_f, seed, final_eval = False):
-    if args.method == 'graphmae':
+    if args.method == 'graphmae_dgl':
         eval_model = build_model(args)
         eval_model.load_state_dict(model.state_dict())
         eval_model.to(device)
@@ -239,14 +239,14 @@ def main(args):
     )
 
     if logs:
-        logger = WandbLogger(log_path=f"{args.pre_train_datasets}_loss_{loss_fn}_nh_{num_hidden}_nl_{num_layers}_lr_{lr}_mp_{max_epoch}_mpf_{max_epoch_f}_wd_{weight_decay}_wdf_{weight_decay_f}_{encoder_type}_{decoder_type}", project="GraphMAE2", args=args)
+        logger = WandbLogger(log_path=f"{args.pre_train_datasets}_loss_{loss_fn}_nh_{num_hidden}_nl_{num_layers}_lr_{lr}_mp_{max_epoch}_mpf_{max_epoch_f}_wd_{weight_decay}_wdf_{weight_decay_f}_{encoder_type}_{decoder_type}", project="graphmae_dgl2", args=args)
     else:
         logger = None
     model_name = f"{encoder}_{decoder}_{num_hidden}_{num_layers}_{dataset_name}_{args.mask_rate}_{num_hidden}_checkpoint.pt"
 
     args.num_features = datasets[0]['g'].ndata["x"].shape[1]
     
-    if args.method == 'graphmae':
+    if args.method == 'graphmae_dgl':
         model = build_model(args)
     else:
         model = build_bgrl_model(args)
