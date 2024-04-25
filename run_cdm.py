@@ -20,7 +20,7 @@ from gp.lightning.metric import HitsAtK
 from types import SimpleNamespace
 from lightning_model import GraphPredLightning
 from models.model import BinGraphModel, BinGraphAttModel, MultiHeadModel
-from models.model import PyGRGCNEdge, OFAMLP
+from models.model import PyGRGCNEdge, OFAMLP, AdaPoolClassModel
 
 from torchmetrics import AUROC, Accuracy
 from utils import (
@@ -147,7 +147,15 @@ def main(params):
             dropout=params.dropout,
         )
     elif params.model == 'adapool':
-        pass 
+        gnn = PyGRGCNEdge(
+            params.num_layers,
+            5,
+            out_dim,
+            out_dim,
+            drop_ratio=params.dropout,
+            JK="last",
+        )
+        model = AdaPoolClassModel(gnn, in_dim, out_dim, 1)
     elif params.model == 'mhead':
         gnn = PyGRGCNEdge(
             params.num_layers,
