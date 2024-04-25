@@ -153,6 +153,39 @@ pubmed_link: &pubmed_link
       split_name: train
       dataset: pubmed_link
 
+citeseer_link: &citeseer_link
+  <<: *E2E-link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: citeseer_link
+    - stage: valid
+      split_name: valid
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: test
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: train
+      dataset: citeseer_link
+
+
+wikics_link: &wikics_link
+  <<: *E2E-link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: wikics_link
+    - stage: valid
+      split_name: valid
+      dataset: wikics_link_eval
+    - stage: test
+      split_name: test
+      dataset: wikics_link_eval
+    - stage: test
+      split_name: train
+      dataset: wikics_link
+
 FB15K237: &FB15K237
   <<: *E2E-link
   eval_set_constructs:
@@ -200,6 +233,7 @@ E2E-graph: &E2E-graph
 
 chemblpre: &chemblpre
   <<: *E2E-graph
+  dataset: chemblpre
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -216,6 +250,7 @@ chemblpre: &chemblpre
 
 chempcba: &chempcba
   <<: *E2E-graph
+  dataset: chempcba
   train: chempcba
   eval_set_constructs:
     - stage: train
@@ -238,6 +273,7 @@ chemhiv: &chemhiv
 tox21: &tox21
   <<: *E2E-graph
   train: tox21
+  dataset: tox21
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -257,6 +293,7 @@ tox21: &tox21
 muv: &muv
   <<: *E2E-graph
   train: muv
+  dataset: muv
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -275,6 +312,7 @@ muv: &muv
 toxcast: &toxcast
   <<: *E2E-graph
   train: toxcast
+  dataset: toxcast
   eval_set_constructs:
     - stage: train
       split_name: train

@@ -175,6 +175,24 @@ pubmed_link_eval:
   args:
     <<: *link-eval-args
 
+citeseer_link: &citeseer_link
+  <<: *E2E-link-cite
+  dataset_name: citeseer
+
+citeseer_link_eval:
+  <<: *citeseer_link
+  args:
+    <<: *link-eval-args
+
+wikics_link: &wikics_link
+  <<: *E2E-link-cite
+  dataset_name: wikics
+
+wikics_link_eval:
+  <<: *wikics_link
+  args:
+    <<: *link-eval-args
+
 E2E-link-KG: &E2E-link-KG
   <<: *E2E-link
   dataset_splitter: KGSplitter
