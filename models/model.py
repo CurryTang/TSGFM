@@ -6,7 +6,7 @@ from gp.nn.models.util_model import MLP
 from gp.nn.models.GNN import MultiLayerMessagePassing
 from gp.nn.layer.pyg import RGCNEdgeConv, RGATEdgeConv
 from torch_geometric.nn.pool import global_add_pool
-
+from torch_geometric.nn.conv import SGConv
 from torch_geometric.transforms.add_positional_encoding import AddRandomWalkPE
 
 
@@ -79,7 +79,7 @@ class SingleHeadAtt(torch.nn.Module):
 
 
 class BinGraphModel(torch.nn.Module):
-    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0):
+    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0, noise_feature = False):
         super().__init__()
         self.model = model
         self.in_proj = nn.Linear(indim, outdim)
@@ -279,6 +279,34 @@ class TransformerModel(nn.Module):
             x, mask=mask, src_key_padding_mask=src_key_padding_mask
         )
         return encoded
+
+class PyGSGC(torch.nn.Module):
+    def __init__(self, indim, outdim, task_dim, emb=None, dropout=0.):
+        super().__init__()
+        self.in_proj = nn.Linear(indim, outdim)
+        self.mlp = MLP([2*outdim,2*outdim, outdim, task_dim], dropout=dropout)
+        self.sgc = SGConv(outdim, outdim, K=3)
+
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+    
+    def forward(self, g):
+        g = self.initial_projection(g)
+        emb = self.sgc(g.x, g.edge_index)
+        float_mask = g.target_node_mask.to(torch.float)
+        target_emb = float_mask.view(-1, 1) * emb
+        n_count = global_add_pool(float_mask, g.batch, g.num_graphs)
+        class_emb = global_add_pool(target_emb, g.batch, g.num_graphs)
+        class_emb = class_emb / n_count.view(-1, 1)
+        rep_class_emb = class_emb.repeat_interleave(g.num_classes, dim=0)
+        res = self.mlp(
+            torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
+        )
+        return res
+    
+
 
 
 class PyGRGCNEdge(MultiLayerMessagePassing):

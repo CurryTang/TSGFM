@@ -20,7 +20,7 @@ from gp.lightning.metric import HitsAtK
 from types import SimpleNamespace
 from lightning_model import GraphPredLightning
 from models.model import BinGraphModel, BinGraphAttModel, MultiHeadModel
-from models.model import PyGRGCNEdge, OFAMLP, AdaPoolClassModel
+from models.model import PyGRGCNEdge, OFAMLP, AdaPoolClassModel, PyGSGC
 
 from torchmetrics import AUROC, Accuracy
 from utils import (
@@ -166,6 +166,8 @@ def main(params):
             JK="last",
         )
         model = MultiHeadModel(gnn, in_dim, out_dim, task_names, data_config_lookup, dropout=params.dropout)
+    elif params.model == 'noparam':
+        model = PyGSGC(in_dim, out_dim, 1, dropout=params.dropout)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=params.lr, weight_decay=params.l2
     )

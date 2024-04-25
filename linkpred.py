@@ -242,6 +242,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb_epoch_list', nargs='+', default=[0, 1, 2, 4, 8, 16],
                         help='list of epochs to log gradient flow')
     parser.add_argument('--log_features', action='store_true', help="log feature importance")
+    parser.add_argument("--tag_data_path", type=str, default='./cache_data_minilm')
     args = parser.parse_args()
     if (args.max_hash_hops == 1) and (not args.use_zero_one):
         print("WARNING: (0,1) feature knock out is not supported for 1 hop. Running with all features")
