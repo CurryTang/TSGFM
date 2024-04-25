@@ -6,7 +6,7 @@ from gp.nn.models.util_model import MLP
 from gp.nn.models.GNN import MultiLayerMessagePassing
 from gp.nn.layer.pyg import RGCNEdgeConv, RGATEdgeConv
 from torch_geometric.nn.pool import global_add_pool
-
+from torch_geometric.nn.conv import SGConv
 from torch_geometric.transforms.add_positional_encoding import AddRandomWalkPE
 
 
@@ -272,6 +272,28 @@ class TransformerModel(nn.Module):
             x, mask=mask, src_key_padding_mask=src_key_padding_mask
         )
         return encoded
+
+class PyGSGC(torch.nn.Module):
+    def __init__(self, indim, outdim, task_dim, emb=None, dropout=0.):
+        super().__init__()
+        self.in_proj = nn.Linear(indim, outdim)
+        self.mlp = MLP([2 * outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
+        self.sgc = SGConv(outdim, outdim, K=3)
+
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+    
+    def forward(self, g):
+        g = self.initial_projection(g)
+        import ipdb; ipdb.set_trace()
+        # class_emb = emb[g.true_nodes_mask]
+        # # print(class_emb)
+        # res = self.mlp(class_emb)
+        # return res
+    
+
 
 
 class PyGRGCNEdge(MultiLayerMessagePassing):
