@@ -31,15 +31,22 @@ class TextClassModel(torch.nn.Module):
 
 
 class AdaPoolClassModel(torch.nn.Module):
-    def __init__(self, model, outdim, task_dim, emb=None):
+    def __init__(self, model, indim, outdim, task_dim, emb=None):
         super().__init__()
         self.model = model
+        self.in_proj = nn.Linear(indim, outdim)
         if emb is not None:
             self.emb = torch.nn.Parameter(emb.clone())
 
         self.mlp = MLP([2 * outdim, 2 * outdim, outdim, task_dim])
 
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = self.in_proj(g.edge_attr)
+        return g
+
     def forward(self, g):
+        g = self.initial_projection(g)
         emb = self.model(g)
         float_mask = g.target_node_mask.to(torch.float)
         target_emb = float_mask.view(-1, 1) * emb
@@ -178,12 +185,13 @@ class MultiHeadModel(torch.nn.Module):
         self.model = model
         self.in_proj = nn.Linear(indim, outdim)
         ## this mlp is shared
-        self.mlp = MLP([outdim, 2 * outdim, outdim], dropout=dropout)
+        # self.mlp = MLP([outdim, 2 * outdim, outdim], dropout=dropout)
         ## this is task-specific
         self.tmlp = {}
         for name in task_names:
             task_dim = data_config_lookup[name]["num_classes"]
-            self.tmlp[name] = MLP([2 * outdim, 2 * outdim, outdim, 2])
+            self.tmlp[name] = MLP([2 * outdim, 2*outdim, outdim, 1])
+        self.tmlp = torch.nn.ModuleDict(self.tmlp)
     
     def initial_projection(self, g):
         g.x = self.in_proj(g.x)
@@ -204,7 +212,6 @@ class MultiHeadModel(torch.nn.Module):
         res = head(
             torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
         )
-        self.tmlp[this_task_name] = self.tmlp[this_task_name].to('cpu')
         return res
 
 
