@@ -28,15 +28,3 @@ select yn in "Yes" "No"; do
 done
 
 
-for dataset in "toxcast"
-do 
-    if [ "$dataset" == "chempcba" ]; then
-        time=8
-        epoch=75
-    else
-        time=3
-        epoch=75
-    fi
-    slurm_directive="--time=0-${time}:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=4"
-    run_repeats "task_names ${dataset} num_layers 7 num_epochs ${epoch} d_multiple 1.0 d_min_ratio 1.0 lr 0.0001 JK none batch_size 512 emb_dim 128"
-done 

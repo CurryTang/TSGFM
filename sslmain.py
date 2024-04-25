@@ -114,7 +114,7 @@ def graph_level_test(model, dataset, loader, args, device):
     with torch.no_grad():
         z = get_all_node_emb(model, 1, loader, args, device, level = 'graph', modeln=args.method)
     
-    test_acc, estp_test_acc, val_acc = linear_test(z, dataset, 100, device)
+    test_acc, estp_test_acc, val_acc = linear_test(z, dataset, 100, device, m_name = DATASET[dataset.name]['metric'])
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc
 

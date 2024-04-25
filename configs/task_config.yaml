@@ -123,6 +123,7 @@ E2E-link: &E2E-link
 
 cora_link: &cora_link
   <<: *E2E-link
+  dataset: cora_link
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -139,6 +140,7 @@ cora_link: &cora_link
 
 pubmed_link: &pubmed_link
   <<: *E2E-link
+  dataset: pubmed_link
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -155,6 +157,7 @@ pubmed_link: &pubmed_link
 
 citeseer_link: &citeseer_link
   <<: *E2E-link
+  dataset: citeseer_link
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -172,6 +175,7 @@ citeseer_link: &citeseer_link
 
 wikics_link: &wikics_link
   <<: *E2E-link
+  dataset: wikics_link
   eval_set_constructs:
     - stage: train
       split_name: train

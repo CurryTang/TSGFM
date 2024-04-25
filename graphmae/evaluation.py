@@ -222,10 +222,7 @@ def eval_func(pred, labels, name = 'accuracy'):
 def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
     lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)
     optimizer = create_optimizer("adam", lr, 0.01, 0.0)
-    if data.num_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss()
-    else:
-        criterion = torch.nn.BCEWithLogitsLoss()
+    
 
     # data = data.to(device)
     embedding = embedding.to(eval_device)
@@ -240,6 +237,10 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
         for i in range(len(data.dataset)):
             labels.append(data.dataset[i].y)
         labels = torch.cat(labels, dim=0).to(eval_device)
+    if labels.dim() < 2:
+        criterion = torch.nn.CrossEntropyLoss()
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
 
     best_val_acc = 0
     best_val_epoch = 0
@@ -280,7 +281,7 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
     best_model.eval()
     with torch.no_grad():
         pred = best_model(embedding)
-        estp_test_acc = accuracy(pred[test_mask], labels[test_mask])
+        estp_test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
     if mute:
         print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
     else:
