@@ -79,7 +79,7 @@ class SingleHeadAtt(torch.nn.Module):
 
 
 class BinGraphModel(torch.nn.Module):
-    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0):
+    def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0, noise_feature = False):
         super().__init__()
         self.model = model
         self.in_proj = nn.Linear(indim, outdim)
@@ -284,7 +284,7 @@ class PyGSGC(torch.nn.Module):
     def __init__(self, indim, outdim, task_dim, emb=None, dropout=0.):
         super().__init__()
         self.in_proj = nn.Linear(indim, outdim)
-        self.mlp = MLP([2 * outdim, 2 * outdim, outdim, task_dim], dropout=dropout)
+        self.mlp = MLP([2*outdim,2*outdim, outdim, task_dim], dropout=dropout)
         self.sgc = SGConv(outdim, outdim, K=3)
 
     def initial_projection(self, g):
@@ -294,11 +294,17 @@ class PyGSGC(torch.nn.Module):
     
     def forward(self, g):
         g = self.initial_projection(g)
-        import ipdb; ipdb.set_trace()
-        # class_emb = emb[g.true_nodes_mask]
-        # # print(class_emb)
-        # res = self.mlp(class_emb)
-        # return res
+        emb = self.sgc(g.x, g.edge_index)
+        float_mask = g.target_node_mask.to(torch.float)
+        target_emb = float_mask.view(-1, 1) * emb
+        n_count = global_add_pool(float_mask, g.batch, g.num_graphs)
+        class_emb = global_add_pool(target_emb, g.batch, g.num_graphs)
+        class_emb = class_emb / n_count.view(-1, 1)
+        rep_class_emb = class_emb.repeat_interleave(g.num_classes, dim=0)
+        res = self.mlp(
+            torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
+        )
+        return res
     
 
 
