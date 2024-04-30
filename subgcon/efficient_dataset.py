@@ -182,6 +182,7 @@ class GraphSubgraphDataset(SubgraphDataset):
     def __init__(self, dataset_name, sb_path, mol_cache_path, num_classes = 2, use_llm = True):
         super().__init__()
         self.level = 'graph'
+        self.name = dataset_name
         encoder = SentenceEncoder("minilm", root=sb_path, batch_size=256)
         self.dataset = MolOFADataset(name = dataset_name, encoder=encoder, root=mol_cache_path, load_text=True)
         self.num_nodes = len(self.dataset)

@@ -205,8 +205,15 @@ class EmbeddingDataset(Dataset):
     def __len__(self):
         return len(self.embeddings)
 
+<<<<<<< HEAD
     def __getitem__(self, idx):
         return self.embeddings[idx], self.labels[idx]
+=======
+def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
+    lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)
+    optimizer = create_optimizer("adam", lr, 0.01, 0.0)
+    
+>>>>>>> c2a8a15edff2131d874b8ec5c89dc0d236c2c3bb
 
 def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
     lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)
@@ -230,11 +237,14 @@ def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy'
         criterion = torch.nn.CrossEntropyLoss()
     else:
         criterion = torch.nn.BCEWithLogitsLoss()
+<<<<<<< HEAD
 
     train_loader = DataLoader(EmbeddingDataset(embedding[train_mask], labels[train_mask]), batch_size=128, shuffle=True)
     val_loader = DataLoader(EmbeddingDataset(embedding[val_mask], labels[val_mask]), batch_size=128, shuffle=False)
     test_loader = DataLoader(EmbeddingDataset(embedding[test_mask], labels[test_mask]), batch_size=128, shuffle=False)
 
+=======
+>>>>>>> c2a8a15edff2131d874b8ec5c89dc0d236c2c3bb
 
     best_val_acc = 0
     best_val_epoch = 0

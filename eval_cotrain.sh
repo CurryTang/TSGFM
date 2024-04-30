@@ -7,7 +7,7 @@ function run_repeats {
     cotrain=$2
     cfg_overrides=$3
 
-    main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 ${mode}.py --pre_train_datasets ${cotrain} --downstream_datasets ${cotrain} ${cfg_overrides}"
+    main="singularity exec --nv /mnt/home/chenzh85/pytorch.sif python3 sweep.py --pre_train_datasets ${cotrain} ${cfg_overrides}"
     common_params="${cfg_overrides}"
 
     echo "Run program: ${main}"
@@ -27,10 +27,10 @@ select yn in "Yes" "No"; do
     esac
 done
 
-slurm_directive="--time=0-3:00:00 --mem=128G --gres=gpu:a100:1 --cpus-per-task=6"
+slurm_directive="--time=0-3:59:00 --mem=160G --cpus-per-task=6"
 
 
 
-run_repeats "subgcon" "products bookhis bookchild elephoto elecomp sportsfit" "--encoder gcn --max_epoch 20"
+run_repeats "graphmae" "products bookhis bookchild elephoto elecomp sportsfit" " --max_epoch 15 --warmup --split_mode graphsaint --subgraph_size 4096 --batch_size 16 --device -1 --count 30"
  
 

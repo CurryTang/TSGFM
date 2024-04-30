@@ -29,7 +29,7 @@ done
 
 
 slurm_directive="--time=0-3:00:00 --mem=128G --gres=gpu:v100:1 --cpus-per-task=4"
-run_repeats "--override ./e2e_graph.yaml"
+run_repeats "--override ./eval_all_node_oneforall.yaml model adapool"
 
 
 

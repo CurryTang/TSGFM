@@ -43,7 +43,7 @@ def pretrain(model, graph, feat, optimizer, max_epoch, device, scheduler, num_cl
             loss_dict["lr"] = get_current_lr(optimizer)
             logger.note(loss_dict, step=epoch)
 
-        if (epoch + 1) % 200 == 0:
+        if (epoch + 1) % 1 == 0:
             linear_probing_full_batch(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob, mute=True)
 
     return model
