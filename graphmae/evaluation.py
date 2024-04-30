@@ -265,10 +265,20 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
         with torch.no_grad():
             lr.eval()
             pred = lr(embedding)
+            val_pred = pred[val_mask]
+            val_labels = labels[val_mask]
+            is_labeled = val_labels == val_labels
+            val_pred = val_pred[is_labeled]
+            val_labels = val_labels[is_labeled]
+            test_pred = pred[test_mask]
+            test_labels = labels[test_mask]
+            is_labeled = test_labels == test_labels
+            test_pred = test_pred[is_labeled]
+            test_labels = test_labels[is_labeled]
             val_acc = eval_func(pred[val_mask], labels[val_mask], m_name)
-            val_loss = criterion(pred[val_mask], labels[val_mask])
+            val_loss = criterion(val_pred, val_labels)
             test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
-            test_loss = criterion(pred[test_mask], labels[test_mask])
+            test_loss = criterion(test_pred, test_labels)
         
         if val_acc >= best_val_acc:
             best_val_acc = val_acc

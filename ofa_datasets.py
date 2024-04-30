@@ -412,6 +412,10 @@ class GraphListDataset(GraphTextDataset):
         return prompt_edge
 
 
+class MassiveDataset(GraphTextDataset):
+    pass
+
+
 class GraphListNopromptDataset(GraphListDataset):
     def make_prompted_graph(self, feature_graph):
         (feat, edge_feat, edge_index, next_nid, g_class_emb, label, trimmed_label,) = feature_graph
