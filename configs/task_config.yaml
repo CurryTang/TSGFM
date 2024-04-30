@@ -123,6 +123,7 @@ E2E-link: &E2E-link
 
 cora_link: &cora_link
   <<: *E2E-link
+  dataset: cora_link
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -139,6 +140,7 @@ cora_link: &cora_link
 
 pubmed_link: &pubmed_link
   <<: *E2E-link
+  dataset: pubmed_link
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -152,6 +154,40 @@ pubmed_link: &pubmed_link
     - stage: test
       split_name: train
       dataset: pubmed_link
+
+citeseer_link: &citeseer_link
+  <<: *E2E-link
+  dataset: citeseer_link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: citeseer_link
+    - stage: valid
+      split_name: valid
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: test
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: train
+      dataset: citeseer_link
+
+wikics_link: &wikics_link
+  <<: *E2E-link
+  dataset: wikics_link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: wikics_link
+    - stage: valid
+      split_name: valid
+      dataset: wikics_link_eval
+    - stage: test
+      split_name: test
+      dataset: wikics_link_eval
+    - stage: test
+      split_name: train
+      dataset: wikics_link
 
 FB15K237: &FB15K237
   <<: *E2E-link
@@ -451,3 +487,18 @@ FB15K237_fs: &FB15K237_fs
     - stage: test
       split_name: test
       dataset: WN18RR_fs_55
+
+
+arxivcorafs: &arxivcorafs
+  <<: *LR-node
+  dataset: arxiv
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: arxiv
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_70
+    - stage: test
+      split_name: test
+      dataset: cora_fs_70

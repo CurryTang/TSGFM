@@ -17,43 +17,45 @@ from torch_geometric.datasets import Planetoid
 from torch_geometric.transforms import RandomLinkSplit
 from torch_geometric.utils import (add_self_loops, negative_sampling,
                                    to_undirected)
-from torch_geometric.utils.negative_sampling import vector_to_edge_index, edge_index_to_vector, sample
+# from torch_geometric.utils.negative_sampling import vector_to_edge_index, edge_index_to_vector, sample
 from torch_geometric.utils.num_nodes import maybe_num_nodes
+
 from torch_geometric.loader import DataLoader as pygDataLoader
 import wandb
 from graphmae.data_util import load_one_tag_dataset
 
+from link.utils import vector_to_edge_index, edge_index_to_vector, sample
 from link.utils import ROOT_DIR, get_same_source_negs, neighbors
 from link.utils import get_largest_connected_component, remap_edges, get_node_mapper
 from link.datasets import get_train_val_test_datasets
 from link.datasets import get_hashed_train_val_test_datasets, make_train_eval_data
 
 
-def get_loaders(args, dataset, splits, directed):
+def get_loaders(args, dataset, splits, directed, dataset_name):
     train_data, val_data, test_data = splits['train'], splits['valid'], splits['test']
-    if args.model in {'ELPH', 'BUDDY'}:
-        train_dataset, val_dataset, test_dataset = get_hashed_train_val_test_datasets(dataset, train_data, val_data,
-                                                                                      test_data, args, directed)
+    if args.model in {'ELPH', 'BUDDY', 'gcn'}:
+        train_dataset, val_dataset, test_dataset = get_hashed_train_val_test_datasets(args.root, train_data, val_data,
+                                                                                      test_data, args, directed, dataset_name)
     else:
         t0 = time.time()
-        train_dataset, val_dataset, test_dataset = get_train_val_test_datasets(dataset, train_data, val_data, test_data,
-                                                                               args)
+        train_dataset, val_dataset, test_dataset = get_train_val_test_datasets(args.root, train_data, val_data, test_data,
+                                                                               args, dataset_name)
         print(f'SEAL preprocessing ran in {time.time() - t0} s')
         if args.wandb:
             wandb.log({"seal_preprocessing_time": time.time() - t0})
 
-    dl = DataLoader if args.model in {'ELPH', 'BUDDY'} else pygDataLoader
+    dl = DataLoader if args.model in {'ELPH', 'BUDDY', 'gcn'} else pygDataLoader
     train_loader = dl(train_dataset, batch_size=args.batch_size,
                       shuffle=True, num_workers=args.num_workers)
     # as the val and test edges are often sampled they also need to be shuffled
     # the citation2 dataset has specific negatives for each positive and so can't be shuffled
-    shuffle_val = False if args.dataset_name.startswith('ogbl-citation') else True
+    shuffle_val = False if dataset_name.startswith('ogbl-citation') else True
     val_loader = dl(val_dataset, batch_size=args.batch_size, shuffle=shuffle_val,
                     num_workers=args.num_workers)
-    shuffle_test = False if args.dataset_name.startswith('ogbl-citation') else True
+    shuffle_test = False if dataset_name.startswith('ogbl-citation') else True
     test_loader = dl(test_dataset, batch_size=args.batch_size, shuffle=shuffle_test,
                      num_workers=args.num_workers)
-    if (args.dataset_name == 'ogbl-citation2') and (args.model in {'ELPH', 'BUDDY'}):
+    if (dataset_name == 'ogbl-citation2') and (args.model in {'ELPH', 'BUDDY', 'gcn'}):
         train_eval_loader = dl(
             make_train_eval_data(args, train_dataset, train_data.num_nodes,
                                   n_pos_samples=5000), batch_size=args.batch_size, shuffle=False,
@@ -64,8 +66,14 @@ def get_loaders(args, dataset, splits, directed):
 
     return train_loader, train_eval_loader, val_loader, test_loader
 
+def keep_attrs_for_data(data):
+    for k in data.keys():
+        if k not in ['x', 'edge_index', 'edge_attr', 'y']:
+            data[k] = None
+    return data
 
-def get_data(args):
+
+def get_data(dataset_name, val_pct, test_pct, tag_data_path, num_negs):
     """
     Read the dataset and generate train, val and test splits.
     For GNN link prediction edges play 2 roles 1/ message passing edges 2/ supervision edges
@@ -78,9 +86,9 @@ def get_data(args):
     :return: dataset, dic splits, bool directed, str eval_metric
     """
     include_negatives = True
-    dataset_name = args.dataset_name
-    val_pct = args.val_pct
-    test_pct = args.test_pct
+    # dataset_name = args.dataset_name
+    # val_pct = args.val_pct
+    # test_pct = args.test_pct
     use_lcc_flag = True
     directed = False
     eval_metric = 'hits'
@@ -93,7 +101,7 @@ def get_data(args):
             dataset.data.x = torch.ones((dataset.data.num_nodes, 1))
             dataset.data.edge_weight = torch.ones(dataset.data.edge_index.size(1), dtype=int)
     else:
-        dataset = load_one_tag_dataset(dataset_name, args.tag_data_path)
+        dataset = load_one_tag_dataset(dataset_name, tag_data_path)
 
     # set the metric
     if dataset_name.startswith('ogbl-citation'):
@@ -103,24 +111,23 @@ def get_data(args):
         eval_metric = 'hits'
         directed = False
 
-    if use_lcc_flag:
-        dataset = use_lcc(dataset)
+    
 
     undirected = not directed
 
-    if dataset_name.startswith('ogbl'):  # use the built in splits
-        data = dataset[0]
-        split_edge = dataset.get_edge_split()
-        if dataset_name == 'ogbl-collab' and args.year > 0:  # filter out training edges before args.year
-            data, split_edge = filter_by_year(data, split_edge, args.year)
-        splits = get_ogb_data(data, split_edge, dataset_name, args.num_negs)
-    else:  # make random splits
-        transform = RandomLinkSplit(is_undirected=undirected, num_val=val_pct, num_test=test_pct,
-                                    add_negative_train_samples=include_negatives)
-        train_data, val_data, test_data = transform(dataset.data)
-        splits = {'train': train_data, 'valid': val_data, 'test': test_data}
+    dataset = keep_attrs_for_data(dataset)
+    transform = RandomLinkSplit(is_undirected=undirected, num_val=val_pct, num_test=test_pct,
+                                add_negative_train_samples=include_negatives)
+    train_data, val_data, test_data = transform(dataset)
+    splits = {'train': train_data, 'valid': val_data, 'test': test_data}
 
     return dataset, splits, directed, eval_metric
+
+
+def get_datas(args):
+    for d in args.pre_train_datasets:
+        dataset, splits, directed, eval_metric = get_data(d, args.val_pct, args.test_pct, args.tag_data_path, args.num_negs)
+        yield dataset, splits, directed, eval_metric, d
 
 
 def filter_by_year(data, split_edge, year):

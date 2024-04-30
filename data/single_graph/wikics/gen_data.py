@@ -46,7 +46,11 @@ def get_data(dset):
     node_texts, label_texts = get_text(cur_path)
     edge_text = ["feature edge. wikipedia page link"]
     prompt_text = ["prompt node. node classification of wikipedia entry category"]
-    prompt_edge_text = ["prompt edge."]
+    prompt_edge_text = ["prompt edge", "prompt edge. edge for query graph that is our target",
+                        "prompt edge. edge for support graph that is an example"]
+    noi_node_edge_text = [
+        "prompt node. link prediction on the wiki articles that are linked together"
+    ]
     edge_label_text = [
         "prompt node. two wikipedia pages do not have hyper-links",
         "prompt node. two wikipedia pages do have hyper-links"
@@ -61,4 +65,4 @@ def get_data(dset):
                       "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                      "class_node_text_feat": ["class_node_text_feat", torch.arange(len(label_texts))],
                      "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
-    return ([pyg_data.data], [node_texts, edge_text, prompt_text, label_texts, prompt_edge_text, ], prompt_text_map,)
+    return ([pyg_data.data], [node_texts, edge_text, prompt_text + noi_node_edge_text, label_texts + edge_label_text, prompt_edge_text, ], prompt_text_map,)

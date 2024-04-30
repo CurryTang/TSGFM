@@ -238,5 +238,8 @@ class GNN_node_Virtualnode(torch.nn.Module):
         return node_representation
 
 
+
+
+
 if __name__ == "__main__":
     pass

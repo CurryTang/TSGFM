@@ -38,15 +38,22 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     if tag_data_path == "":
         raise ValueError("tag_data_path is empty.")
     path = osp.join(tag_data_path, f"{dataset}/processed", "geometric_data_processed.pt")
+    meta_data = osp.join(tag_data_path, f"{dataset}/processed", "data.pt")
+    if not link:
+        meta_class_info = meta_data['e2e_node']['class_node_text_feat'][1]
+    else:
+        meta_class_info = meta_data['e2e_link']['class_edge_text_feat'][1]
     if not osp.exists(path):
         raise ValueError(f"File not found: {path}")
     data = torch.load(path)[0]
+    meta_class_emb = data.class_node_text_feat[meta_class_info]
     feature = data.node_text_feat
     data.y = data.y.view(-1)
     # edge_index = data.edge_index
     # if dataset != 'arxiv23':
     data.edge_index = to_undirected(data.edge_index)
     data.x = feature
+    data.meta_class_emb = meta_class_emb
     m_size = data.x.size(0)
     ## the following is for downstream tasks
     if not link:

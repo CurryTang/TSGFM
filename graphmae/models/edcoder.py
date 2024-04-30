@@ -8,6 +8,7 @@ import torch.nn as nn
 from .gat import GAT
 from .gin import GIN
 from .loss_func import sce_loss
+from .sgcn import GraphEncoder
 from graphmae.utils import create_norm
 from torch_geometric.utils import dropout_edge
 from torch_geometric.utils import add_self_loops, remove_self_loops
@@ -16,7 +17,7 @@ from sklearn.linear_model import LogisticRegression
 
 
 
-def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropout, activation, residual, norm, nhead, nhead_out, attn_drop, negative_slope=0.2, concat_out=True) -> nn.Module:
+def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropout, activation, residual, norm, nhead, nhead_out, attn_drop, negative_slope=0.2, concat_out=True, embed_mode = 'nofeat') -> nn.Module:
     if m_type == "gat":
         mod = GAT(
             in_dim=in_dim,
@@ -43,6 +44,14 @@ def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropo
             dropout=dropout,
             act=activation,
             norm=create_norm(norm)
+        )
+    elif m_type == 's-gcn':
+        mod = GraphEncoder(
+            output_dim=int(out_dim),
+            node_hidden_dim=int(num_hidden),
+            edge_hidden_dim=int(num_hidden),
+            num_layers=num_layers,
+            mode=embed_mode
         )
     elif m_type == "gin":
         mod = GIN(
@@ -94,6 +103,7 @@ class PreModel(nn.Module):
             replace_rate: float = 0.1,
             alpha_l: float = 2,
             concat_hidden: bool = False,
+            mode: str = 'nofeat'
          ):
         super(PreModel, self).__init__()
         self._mask_rate = mask_rate
@@ -105,6 +115,7 @@ class PreModel(nn.Module):
         
         self._replace_rate = replace_rate
         self._mask_token_rate = 1 - self._replace_rate
+        self._mode = mode
 
         assert num_hidden % nhead == 0
         assert num_hidden % nhead_out == 0
@@ -135,6 +146,7 @@ class PreModel(nn.Module):
             negative_slope=negative_slope,
             residual=residual,
             norm=create_norm(norm),
+            embed_mode=self._mode
         )
 
         # build decoder for attribute prediction
@@ -154,6 +166,7 @@ class PreModel(nn.Module):
             residual=residual,
             norm=create_norm(norm),
             concat_out=True,
+            embed_mode=self._mode
         )
 
         self.enc_mask_token = nn.Parameter(torch.zeros(1, in_dim))
@@ -202,7 +215,7 @@ class PreModel(nn.Module):
             out_x = x.clone()
             token_nodes = mask_nodes
             out_x[mask_nodes] = 0.0
-
+        
         out_x[token_nodes] += self.enc_mask_token
 
         return out_x, (mask_nodes, keep_nodes)

@@ -81,7 +81,7 @@ def train_buddy(model, optimizer, train_loader, args, device, emb=None):
         wandb.log({"train_batch_time": np.mean(batch_processing_times)})
         wandb.log({"train_epoch_time": time.time() - t0})
 
-    print(f'training ran in {time.time() - t0}')
+    # print(f'training ran in {time.time() - t0}')
 
     if args.log_features:
         model.log_wandb()
@@ -129,12 +129,12 @@ def train(model, optimizer, train_loader, args, device, emb=None):
             logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id, data.src_degree,
                            data.dst_degree)
             loss = get_loss(args.loss)(logits, data.y)
-        if args.l1 > 0:
-            l1_reg = torch.tensor(0, dtype=torch.float)
-            lin_params = torch.cat([x.view(-1) for x in model.lin.parameters()])
-            for param in lin_params:
-                l1_reg += torch.norm(param, 1) ** 2
-            loss = loss + args.l1 * l1_reg
+        # if args.l1 > 0:
+        #     l1_reg = torch.tensor(0, dtype=torch.float)
+        #     lin_params = torch.cat([x.view(-1) for x in model.lin.parameters()])
+        #     for param in lin_params:
+        #         l1_reg += torch.norm(param, 1) ** 2
+        #     loss = loss + args.l1 * l1_reg
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * args.batch_size
@@ -147,7 +147,7 @@ def train(model, optimizer, train_loader, args, device, emb=None):
         wandb.log({"train_batch_time": np.mean(batch_processing_times)})
         wandb.log({"train_epoch_time": time.time() - t0})
 
-    print(f'training ran in {time.time() - t0}')
+    # print(f'training ran in {time.time() - t0}')
     if args.model in {'linear', 'pmi', 'ra', 'aa', 'one_layer'}:
         model.print_params()
 
@@ -218,7 +218,7 @@ def train_elph(model, optimizer, train_loader, args, device):
         wandb.log({"train_batch_time": np.mean(batch_processing_times)})
         wandb.log({"train_epoch_time": time.time() - t0})
 
-    print(f'training ran in {time.time() - t0}')
+    # print(f'training ran in {time.time() - t0}')
     if args.model in {'linear', 'pmi', 'ra', 'aa', 'one_layer'}:
         model.print_params()
 

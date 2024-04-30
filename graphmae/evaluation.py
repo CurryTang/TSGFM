@@ -4,30 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from graphmae.utils import create_optimizer, accuracy
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import numpy as np
 from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
 
-
-def node_classification_evaluation(model, graph, x, num_classes, lr_f, weight_decay_f, max_epoch_f, device, linear_prob=True, mute=False):
-    model.eval()
-    if linear_prob:
-        with torch.no_grad():
-            x = model.embed(x.to(device), graph.edge_index.to(device))
-            in_feat = x.shape[1]
-        encoder = LogisticRegression(in_feat, num_classes)
-    else:
-        encoder = model.encoder
-        encoder.reset_classifier(num_classes)
-
-    num_finetune_params = [p.numel() for p in encoder.parameters() if  p.requires_grad]
-    if not mute:
-        print(f"num parameters for finetuning: {sum(num_finetune_params)}")
-    
-    encoder.to(device)
-    optimizer_f = create_optimizer("adam", encoder, lr_f, weight_decay_f)
-    final_acc, estp_acc = linear_probing_for_transductive_node_classiifcation(encoder, graph, x, optimizer_f, max_epoch_f, device, mute)
-    return final_acc, estp_acc
 
 
 class LinkPredictor(torch.nn.Module):
@@ -119,7 +99,7 @@ def link_res(embedding, predictor, data, evaluator, batch_size):
 
 def link_linear_test(embedding, data, max_epoch, device, evaluator, mute = False):
     ## decode
-    predictor = LinkPredictor(embedding.shape[1], 256, 1, 2, 0.0)
+    predictor = LinkPredictor(embedding.shape[1], 256, 1, 2, 0.0).to(device)
     optimizer = create_optimizer("adam", predictor, 0.01, 0.0)
     pos_train_edge = data.train_edge_index
 
@@ -217,15 +197,107 @@ def eval_func(pred, labels, name = 'accuracy'):
     elif name == 'auc':
         return eval_rocauc(labels.cpu().numpy(), pred.cpu().numpy())
 
+class EmbeddingDataset(Dataset):
+    def __init__(self, embeddings, labels):
+        self.embeddings = embeddings
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.embeddings)
+
+    def __getitem__(self, idx):
+        return self.embeddings[idx], self.labels[idx]
+
+def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
+    lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)
+    optimizer = create_optimizer("adam", lr, 0.005, 0.0)
+    embedding = embedding.to(eval_device)
+
+    train_mask = data.train_mask.to(eval_device)
+    val_mask = data.val_mask.to(eval_device)
+    test_mask = data.test_mask.to(eval_device)
+
+    
+
+    labels = []
+    if hasattr(data, 'y'):
+        labels = data.y.to(eval_device)
+    else:
+        for i in range(len(data.dataset)):
+            labels.append(data.dataset[i].y)
+        labels = torch.cat(labels, dim=0).to(eval_device)
+    if labels.dim() < 2:
+        criterion = torch.nn.CrossEntropyLoss()
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
+
+    train_loader = DataLoader(EmbeddingDataset(embedding[train_mask], labels[train_mask]), batch_size=128, shuffle=True)
+    val_loader = DataLoader(EmbeddingDataset(embedding[val_mask], labels[val_mask]), batch_size=128, shuffle=False)
+    test_loader = DataLoader(EmbeddingDataset(embedding[test_mask], labels[test_mask]), batch_size=128, shuffle=False)
+
+
+    best_val_acc = 0
+    best_val_epoch = 0
+    best_model = None
+
+    if not mute:
+        epoch_iter = tqdm(range(max_epoch))
+    else:
+        epoch_iter = range(max_epoch)
+
+    for epoch in epoch_iter:
+        for x, y in train_loader:
+            lr.train()
+            x = lr(x)
+            is_labeled = y == y
+            loss = criterion(x[is_labeled], y[is_labeled])
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        
+        with torch.no_grad():
+            lr.eval()
+            pred = []
+            true = []
+            for x, y in val_loader:
+                x = lr(x)
+                pred.append(x)
+                true.append(y)
+            pred = torch.cat(pred, dim=0)
+            true = torch.cat(true, dim=0)
+            val_acc = eval_func(pred, true, m_name)
+            val_loss = criterion(pred, true)
+            pred = []
+            true = []
+            for x, y in test_loader:
+                x = lr(x)
+                pred.append(x)
+                true.append(y)
+            pred = torch.cat(pred, dim=0)
+            true = torch.cat(true, dim=0)
+            test_acc = eval_func(pred, true, m_name)
+            test_loss = criterion(pred, true)
+        if val_acc >= best_val_acc:
+            best_val_acc = val_acc
+            best_val_epoch = epoch
+            best_model = copy.deepcopy(lr)
+    best_model.eval()
+    with torch.no_grad():
+        pred = best_model(embedding)
+        estp_test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
+    if mute:
+        print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
+    else:
+        print(f"--- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
+
+    # (final_acc, es_acc, best_acc)
+    return test_acc, estp_test_acc, best_val_acc    
 
 
 def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
     lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)
     optimizer = create_optimizer("adam", lr, 0.01, 0.0)
-    if data.num_classes > 2:
-        criterion = torch.nn.CrossEntropyLoss()
-    else:
-        criterion = torch.nn.BCEWithLogitsLoss()
+    
 
     # data = data.to(device)
     embedding = embedding.to(eval_device)
@@ -240,6 +312,10 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
         for i in range(len(data.dataset)):
             labels.append(data.dataset[i].y)
         labels = torch.cat(labels, dim=0).to(eval_device)
+    if labels.dim() < 2:
+        criterion = torch.nn.CrossEntropyLoss()
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
 
     best_val_acc = 0
     best_val_epoch = 0
@@ -264,10 +340,20 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
         with torch.no_grad():
             lr.eval()
             pred = lr(embedding)
+            val_pred = pred[val_mask]
+            val_labels = labels[val_mask]
+            is_labeled = val_labels == val_labels
+            val_pred = val_pred[is_labeled]
+            val_labels = val_labels[is_labeled]
+            test_pred = pred[test_mask]
+            test_labels = labels[test_mask]
+            is_labeled = test_labels == test_labels
+            test_pred = test_pred[is_labeled]
+            test_labels = test_labels[is_labeled]
             val_acc = eval_func(pred[val_mask], labels[val_mask], m_name)
-            val_loss = criterion(pred[val_mask], labels[val_mask])
+            val_loss = criterion(val_pred, val_labels)
             test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
-            test_loss = criterion(pred[test_mask], labels[test_mask])
+            test_loss = criterion(test_pred, test_labels)
         
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
@@ -280,7 +366,7 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
     best_model.eval()
     with torch.no_grad():
         pred = best_model(embedding)
-        estp_test_acc = accuracy(pred[test_mask], labels[test_mask])
+        estp_test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
     if mute:
         print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
     else:
@@ -289,62 +375,7 @@ def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = Fa
     # (final_acc, es_acc, best_acc)
     return test_acc, estp_test_acc, best_val_acc
 
-def linear_probing_for_transductive_node_classiifcation(model, graph, feat, optimizer, max_epoch, device, mute=False):
-    criterion = torch.nn.CrossEntropyLoss()
 
-    graph = graph.to(device)
-    x = feat.to(device)
-
-    train_mask = graph.train_mask
-    val_mask = graph.val_mask
-    test_mask = graph.test_mask
-    labels = graph.y
-
-    best_val_acc = 0
-    best_val_epoch = 0
-    best_model = None
-
-    if not mute:
-        epoch_iter = tqdm(range(max_epoch))
-    else:
-        epoch_iter = range(max_epoch)
-
-    for epoch in epoch_iter:
-        model.train()
-        out = model(graph, x)
-        loss = criterion(out[train_mask], labels[train_mask])
-        optimizer.zero_grad()
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=3)
-        optimizer.step()
-
-        with torch.no_grad():
-            model.eval()
-            pred = model(graph, x)
-            val_acc = accuracy(pred[val_mask], labels[val_mask])
-            val_loss = criterion(pred[val_mask], labels[val_mask])
-            test_acc = accuracy(pred[test_mask], labels[test_mask])
-            test_loss = criterion(pred[test_mask], labels[test_mask])
-        
-        if val_acc >= best_val_acc:
-            best_val_acc = val_acc
-            best_val_epoch = epoch
-            best_model = copy.deepcopy(model)
-
-        if not mute:
-            epoch_iter.set_description(f"# Epoch: {epoch}, train_loss:{loss.item(): .4f}, val_loss:{val_loss.item(): .4f}, val_acc:{val_acc}, test_loss:{test_loss.item(): .4f}, test_acc:{test_acc: .4f}")
-
-    best_model.eval()
-    with torch.no_grad():
-        pred = best_model(graph, x)
-        estp_test_acc = accuracy(pred[test_mask], labels[test_mask])
-    if mute:
-        print(f"# IGNORE: --- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
-    else:
-        print(f"--- TestAcc: {test_acc:.4f}, early-stopping-TestAcc: {estp_test_acc:.4f}, Best ValAcc: {best_val_acc:.4f} in epoch {best_val_epoch} --- ")
-
-    # (final_acc, es_acc, best_acc)
-    return test_acc, estp_test_acc
 
 
 class LogisticRegression(nn.Module):

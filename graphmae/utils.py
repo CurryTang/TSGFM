@@ -135,6 +135,7 @@ def build_args():
     parser.add_argument("--embed_mode", default="llm", type=str)
     parser.add_argument("--backbone", default="gcn_node", type=str) 
     parser.add_argument("--count", type=int, default=3)
+    parser.add_argument("--cpuinf", action="store_true", default=False)
     args = parser.parse_args()
     return args
 

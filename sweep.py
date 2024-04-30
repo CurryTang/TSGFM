@@ -27,7 +27,7 @@ if __name__ == "__main__":
             "method": "random",
             "metric": {"goal": "maximize", "name": "avg_test"},
             "parameters": {
-                "num_hidden": {"values": [32, 64, 128, 256]},
+                "num_hidden": {"values": [128, 256, 512, 1024]},
                 "num_heads": {"values": [1, 4, 8]},
                 "num_out_heads": {"values": [1]},
                 "activation": {"values": ["relu", "prelu", "elu"]},
@@ -71,6 +71,6 @@ if __name__ == "__main__":
         }
 
     # 3: Start the sweep
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project=f"GFM-{args.pre_train_datasets}-{args.encoder}")
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project=f"GFM-{args.pre_train_datasets}-{args.encoder}"[:75])
 
     wandb.agent(sweep_id, function=lambda: main(args), count=args.count)

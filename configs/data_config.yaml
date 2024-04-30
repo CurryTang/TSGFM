@@ -175,6 +175,24 @@ pubmed_link_eval:
   args:
     <<: *link-eval-args
 
+citeseer_link: &citeseer_link
+  <<: *E2E-link-cite
+  dataset_name: citeseer
+
+citeseer_link_eval:
+  <<: *citeseer_link
+  args:
+    <<: *link-eval-args
+
+wikics_link: &wikics_link
+  <<: *E2E-link-cite
+  dataset_name: wikics
+
+wikics_link_eval:
+  <<: *wikics_link
+  args:
+    <<: *link-eval-args
+
 E2E-link-KG: &E2E-link-KG
   <<: *E2E-link
   dataset_splitter: KGSplitter
@@ -437,6 +455,16 @@ cora_fs_75:
     no_class_node: True
   num_classes: 7
 
+cora_fs_70:
+  <<: *cora_fs
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 7
+    k_shot: 0
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 7
 
 LR-link: &LR-link
   task_level: lr_link
