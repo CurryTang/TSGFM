@@ -35,7 +35,7 @@ def get_loaders(args, dataset, splits, directed, dataset_name):
     train_data, val_data, test_data = splits['train'], splits['valid'], splits['test']
     if args.model in {'ELPH', 'BUDDY', 'gcn'}:
         train_dataset, val_dataset, test_dataset = get_hashed_train_val_test_datasets(args.root, train_data, val_data,
-                                                                                      test_data, args, directed, dataset_name)
+                                                                                      test_data, args, dataset_name, directed)
     else:
         t0 = time.time()
         train_dataset, val_dataset, test_dataset = get_train_val_test_datasets(args.root, train_data, val_data, test_data,

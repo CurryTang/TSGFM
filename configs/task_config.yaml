@@ -62,6 +62,10 @@ amazonratings: &amazonratings
   <<: *E2E-node
   dataset: amazonratings
 
+arxivyear: &arxivyear
+  <<: *E2E-node
+  dataset: arxivyear
+
 logic_arxiv:
   <<: *E2E-node
   dataset: logic_arxiv
@@ -154,6 +158,24 @@ pubmed_link: &pubmed_link
     - stage: test
       split_name: train
       dataset: pubmed_link
+
+
+citeseer_link: &citeseer_link
+  <<: *E2E-link
+  dataset: citeseer_link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: citeseer_link
+    - stage: valid
+      split_name: valid
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: test
+      dataset: citeseer_link_eval
+    - stage: test
+      split_name: train
+      dataset: citeseer_link
 
 FB15K237: &FB15K237
   <<: *E2E-link

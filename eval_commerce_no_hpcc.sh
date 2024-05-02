@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=1 python3 run_cdm.py --override /egr/research-dselab/chenzh85/nips/MyOFA/eval_commerce_oneforall.yaml model adapool exp_name commerce_with_hete_adapool num_epochs 20
+CUDA_VISIBLE_DEVICES=1 python3 run_cdm.py --override /egr/research-dselab/chenzh85/nips/MyOFA/eval_commerce_oneforall.yaml model noparam exp_name commerce_with_hete_noparam num_epochs 20

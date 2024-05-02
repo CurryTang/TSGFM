@@ -68,7 +68,8 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.sample = sample
         self.split_mode = split_mode
         self.saint_loader = None
-        self.loader = None
+        self.train_loader = None
+        self.test_loader = None
         self.build() 
 
     def build(self):
@@ -82,8 +83,10 @@ class NodeSubgraphDataset(SubgraphDataset):
         idx = torch.arange(self.num_nodes)
         ## here's a tradeoff between randomness and efficiency
         self.data = keep_attrs_for_data(self.data)
-        loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
-        self.loader = loader
+        train_loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
+        self.train_loader = train_loader 
+        test_loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=False)
+        self.test_loader = test_loader
 
     def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
         #Extract subgraphs for nodes in the list
@@ -95,15 +98,15 @@ class NodeSubgraphDataset(SubgraphDataset):
                     if infmode == 'cpu':
                         return DataLoader([self.data], batch_size=1, shuffle=False)
                     else:
-                        if self.loader is not None:
-                            return self.loader
+                        if self.test_loader is not None:
+                            return self.test_loader
                         else:
                             self.build()
-                            return self.loader
+                            return self.test_loader
             else:
-                if self.loader is None:
+                if self.train_loader is None:
                     self.build()
-                return self.loader
+                return self.train_loader if time == 'train' else self.test_loader
         else:
             return DataLoader([self.data], batch_size=1, shuffle=False)
     
@@ -141,6 +144,8 @@ class LinkSubgraphDataset(SubgraphDataset):
         self.sample = sample
         self.split_mode = split_mode
         self.saint_loader = None
+        self.train_loader = None
+        self.test_loader = None
         self.build() 
     
     def build(self):
@@ -153,8 +158,10 @@ class LinkSubgraphDataset(SubgraphDataset):
         idx = torch.arange(self.num_nodes)
         ## here's a tradeoff between randomness and efficiency
         self.data = keep_attrs_for_data(self.data)
-        loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
-        self.loader = loader
+        train_loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
+        self.train_loader = train_loader
+        test_loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=False)
+        self.test_loader = test_loader
 
     def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
         #Extract subgraphs for nodes in the list
@@ -166,15 +173,15 @@ class LinkSubgraphDataset(SubgraphDataset):
                     if infmode == 'cpu':
                         return DataLoader([self.data], batch_size=1, shuffle=False)
                     else:
-                        if self.loader is not None:
-                            return self.loader
+                        if self.test_loader is not None:
+                            return self.test_loader
                         else:
                             self.build()
-                            return self.loader
+                            return self.test_loader
             else:
-                if self.loader is None:
+                if self.train_loader is None:
                     self.build()
-                return self.loader
+                return self.train_loader if time == 'train' else self.test_loader
         else:
             return DataLoader([self.data], batch_size=1, shuffle=False)
 

@@ -478,6 +478,23 @@ def evaluate_hits(evaluator, pos_train_pred, neg_train_pred, pos_val_pred, neg_v
         })[f'hits@{K}']
 
         results[f'Hits@{K}'] = (train_hits, valid_hits, test_hits)
+    
+    for K in [20, 50, 100]:
+        evaluator.K = K
+        train_hits = evaluator.eval({
+            'y_pred_pos': pos_train_pred,
+            'y_pred_neg': neg_train,
+        })[f'hits@{K}']
+        valid_hits = evaluator.eval({
+            'y_pred_pos': pos_val_pred,
+            'y_pred_neg': neg_val_pred,
+        })[f'hits@{K}']
+        test_hits = evaluator.eval({
+            'y_pred_pos': pos_test_pred,
+            'y_pred_neg': neg_test_pred,
+        })[f'hits@{K}']
+
+        print(f'Hits@{K}: Train: {train_hits:.4f}, Val: {valid_hits:.4f}, Test: {test_hits:.4f}')
 
     return results
 

@@ -26,7 +26,7 @@ def eval_task(metric):
 def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
                           'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics', 
-                          'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link']
+                          'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link', 'bookhis-link', 'bookchild-link', 'elephoto-link', 'elecomp-link', 'sportsfit-link', 'products-link']
     if dataset.endswith("-link"):
         dataset = dataset[:-5]
         link = True
@@ -39,10 +39,11 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
         raise ValueError("tag_data_path is empty.")
     path = osp.join(tag_data_path, f"{dataset}/processed", "geometric_data_processed.pt")
     meta_data = osp.join(tag_data_path, f"{dataset}/processed", "data.pt")
+    meta_data = torch.load(meta_data)
     if not link:
         meta_class_info = meta_data['e2e_node']['class_node_text_feat'][1]
     else:
-        meta_class_info = meta_data['e2e_link']['class_edge_text_feat'][1]
+        meta_class_info = meta_data['e2e_link']['class_node_text_feat'][1]
     if not osp.exists(path):
         raise ValueError(f"File not found: {path}")
     data = torch.load(path)[0]

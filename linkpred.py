@@ -47,56 +47,76 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+def eval(model, evaluator, train_eval_loaders, val_loaders, test_loaders, datasets, args, device, eval_metric='hits', this_epoch = 0):
+    assert len(train_eval_loaders) == len(val_loaders)
+    assert len(train_eval_loaders) == len(test_loaders)
+    train_results = []
+    val_results = []
+    test_results = []
+    for i in range(len(train_eval_loaders)):
+        current_data = datasets[i]
+        train_eval_loader = train_eval_loaders[i]
+        val_loader = val_loaders[i]
+        test_loader = test_loaders[i]
+        results = test(model, evaluator, train_eval_loader, val_loader, test_loader, args, device, eval_metric=eval_metric)
+        for key, result in results.items():
+            train_res, tmp_val_res, tmp_test_res = result
+            to_print = f'Dataset: {current_data} Epoch: {this_epoch}, Train: {100 * train_res:.2f}%, Valid: ' \
+                    f'{100 * tmp_val_res:.2f}%, Test: {100 * tmp_test_res:.2f}%'
+            print(key)
+            print(to_print)
+            train_results.append(train_res)
+            val_results.append(tmp_val_res)
+            test_results.append(tmp_test_res)
+    avg_eval = np.mean(val_results)
+    avg_test = np.mean(test_results)    
+    return avg_eval, avg_test
+    
+
 def run(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"executing on {device}")
     results_list = []
     train_func = get_train_func(args)
-    for rep in range(args.reps):
-        set_seed(rep)
-        ## dataset, splits, directed, eval_metric
-        evaluator = Evaluator(name='ogbl-ppa')  # this sets HR@100 as the metric
-        # emb = select_embedding(args, dataset.data.num_nodes, device)
-        emb = None
-        model, optimizer = select_model(args, args.input_dim, emb, device)
-        val_res = test_res = best_epoch = 0
-        for epoch in range(args.epochs):
-            data_idx = 0
-            print(f'Epoch {epoch}')
-            yielder = get_datas(args)
-            for dataset, splits, directed, eval_metric, dataset_name in yielder:
-                train_loader, train_eval_loader, val_loader, test_loader = get_loaders(args, dataset, splits, directed, dataset_name)
-                # if rep == 0:
-                #     print_model_params(model)
-                
-                t0 = time.time()
-                loss = train_func(model, optimizer, train_loader, args, device)
-                if (epoch + 1) % args.eval_steps == 0:
-                    results = test(model, evaluator, train_eval_loader, val_loader, test_loader, args, device,
-                                eval_metric=eval_metric)
-                    for key, result in results.items():
-                        train_res, tmp_val_res, tmp_test_res = result
-                        if tmp_val_res > val_res:
-                            val_res = tmp_val_res
-                            test_res = tmp_test_res
-                            best_epoch = epoch
-                        res_dic = {f'rep{rep}_loss': loss, f'rep{rep}_Train' + key: 100 * train_res,
-                                f'rep{rep}_Val' + key: 100 * val_res, f'rep{rep}_tmp_val' + key: 100 * tmp_val_res,
-                                f'rep{rep}_tmp_test' + key: 100 * tmp_test_res,
-                                f'rep{rep}_Test' + key: 100 * test_res, f'rep{rep}_best_epoch': best_epoch,
-                                f'rep{rep}_epoch_time': time.time() - t0, 'epoch_step': epoch}
-                        if args.wandb:
-                            wandb.log(res_dic)
-                        to_print = f'Dataset: {dataset_name} Epoch: {epoch:02d}, Best epoch: {best_epoch}, Loss: {loss:.4f}, Train: {100 * train_res:.2f}%, Valid: ' \
-                                f'{100 * val_res:.2f}%, Test: {100 * test_res:.2f}%, epoch time: {time.time() - t0:.1f}'
-                        print(key)
-                        print(to_print)
-                data_idx += 1
+    set_seed(0)
+    ## dataset, splits, directed, eval_metric
+    evaluator = Evaluator(name='ogbl-ppa')  # this sets HR@100 as the metric
+    # emb = select_embedding(args, dataset.data.num_nodes, device)
+    emb = None
+    model, optimizer = select_model(args, args.input_dim, emb, device)
+    val_res = test_res = best_epoch = 0
+    for epoch in range(args.epochs):
+        data_idx = 0
+        print(f'Epoch {epoch}')
+        yielder = get_datas(args)
+        train_eval_loaders = []
+        val_loaders = []
+        test_loaders = []
+        dataset_names = []
+        for dataset, splits, directed, eval_metric, dataset_name in yielder:
+            train_loader, train_eval_loader, val_loader, test_loader = get_loaders(args, dataset, splits, directed, dataset_name)
+            train_eval_loaders.append(train_eval_loader)
+            val_loaders.append(val_loader)
+            test_loaders.append(test_loader)
+            dataset_names.append(dataset_name)
+            # if rep == 0:
+            #     print_model_params(model)
+            
+            t0 = time.time()
+            loss = train_func(model, optimizer, train_loader, args, device)
+            print(f"Dataset: {dataset_name}, Epoch: {epoch}, Loss: {loss:.4f}, Time: {time.time() - t0:.2f}")
+        tmp_val, tmp_test = eval(model, evaluator, train_eval_loaders, val_loaders, test_loaders, dataset_names, args, device, eval_metric='hits', this_epoch = epoch)
+        if tmp_val > val_res:
+            val_res = tmp_val
+            test_res = tmp_test
+            best_epoch = epoch
     if args.wandb:
         wandb.finish()
     if args.save_model:
         path = f'{ROOT_DIR}/saved_models/{args.dataset_name}'
         torch.save(model.state_dict(), path)
+    print(f'Best epoch: {best_epoch}, Val: {val_res:.2f}, Test: {test_res:.2f}')
+    return val_res, test_res
 
 
 def select_model(args, num_features, emb, device):

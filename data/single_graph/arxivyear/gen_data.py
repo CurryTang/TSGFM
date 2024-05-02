@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 from data.ofa_data import OFAPygDataset
 from ogb.nodeproppred import PygNodePropPredDataset
-
+import numpy as np
 
 def get_node_feature(path):
     # Node feature process
@@ -80,15 +80,52 @@ def get_logic_feature(path):
             or_labeled_text.append(txt)
     return or_labeled_text + not_and_labeled_text
 
+def even_quantile_labels(vals, nclasses, verbose=True):
+    """ partitions vals into nclasses by a quantile based split,
+    where the first class is less than the 1/nclasses quantile,
+    second class is less than the 2/nclasses quantile, and so on
+    
+    vals is np array
+    returns an np array of int class labels
+    """
+    label = -1 * np.ones(vals.shape[0], dtype=int)
+    interval_lst = []
+    lower = -np.inf
+    for k in range(nclasses - 1):
+        upper = np.nanquantile(vals, (k + 1) / nclasses)
+        interval_lst.append((lower, upper))
+        inds = (vals >= lower) * (vals < upper)
+        label[inds] = k
+        lower = upper
+    label[vals >= lower] = nclasses - 1
+    interval_lst.append((lower, np.inf))
+    if verbose:
+        print('Class Label Intervals:')
+        for class_idx, interval in enumerate(interval_lst):
+            print(f'Class {class_idx}: [{interval[0]}, {interval[1]})]')
+    return label
+
 
 def get_data(dset):
     pyg_data = PygNodePropPredDataset(name="ogbn-arxiv", root=dset.data_dir)
+    years = pyg_data[0].node_year.reshape(-1)
+    label = even_quantile_labels(
+        years, 5, verbose=False)
+    pyg_data.data.y = torch.as_tensor(label)
     cur_path = os.path.dirname(__file__)
     splits = pyg_data.get_idx_split()
     pyg_data.data.splits = splits
     feat_node_texts = get_node_feature(cur_path).tolist()
-    class_node_texts = get_label_feature(cur_path).tolist()
-    logic_node_texts = get_logic_feature(cur_path)
+    # class_node_texts = get_label_feature(cur_path).tolist()
+    label_desc = pd.read_csv(os.path.join(cur_path, "categories.csv"))    
+    class_node_texts = [
+        "prompt node. category and description: "
+        + line['name']
+        + "."
+        + line['description']
+        for _, line in label_desc.iterrows()
+    ]
+    # logic_node_texts = get_logic_feature(cur_path)
     feat_edge_texts = ["feature edge. citation"]
     noi_node_texts = ["prompt node. node classification of literature category"]
     prompt_edge_texts = ["prompt edge.", "prompt edge. edge for query graph that is our target",
@@ -100,12 +137,6 @@ def get_data(dset):
                        "lr_node": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
                                    "class_node_text_feat": ["class_node_text_feat",
                                                             torch.arange(len(class_node_texts))],
-                                   "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]},
-                       "logic_e2e": {"noi_node_text_feat": ["noi_node_text_feat", [0]],
-                                     "class_node_text_feat": ["class_node_text_feat",
-                                                              torch.arange(len(class_node_texts),
-                                                                           len(class_node_texts) + len(
-                                                                               logic_node_texts))],
-                                     "prompt_edge_text_feat": ["prompt_edge_text_feat", [0]]}}
-    return ([pyg_data.data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts + logic_node_texts,
+                                   "prompt_edge_text_feat": ["prompt_edge_text_feat", [0, 1, 2]]}}
+    return ([pyg_data.data], [feat_node_texts, feat_edge_texts, noi_node_texts, class_node_texts,
         prompt_edge_texts, ], prompt_text_map,)

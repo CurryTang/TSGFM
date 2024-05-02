@@ -6,8 +6,9 @@ DATASET = {
     'pubmed': {'name': 'pubmed', 'level': 'node', 'task_dim': 3, 'metric': 'accuracy'},
     'pubmed-link': {'name': 'pubmed-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
     'arxiv': {'name': 'arxiv', 'level': 'node', 'task_dim': 40, 'metric': 'accuracy'},
+    'arxiv-link': {'name': 'arxiv-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
     'arxiv23': {'name': 'arxiv23', 'level': 'node', 'task_dim': 40, 'metric': 'accuracy'},
-    # 'arxiv23-link': {'name': 'arxiv23-link', 'level': 'link'},
+    'arxiv23-link': {'name': 'arxiv23-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
     'bookchild': {'name': 'bookchild', 'level': 'node', 'task_dim': 24, 'metric': 'accuracy'},
     'bookhis': {'name': 'bookhis', 'level': 'node', 'task_dim': 12, 'metric': 'accuracy'},
     'elecomp': {'name': 'elecomp', 'level': 'node', 'task_dim': 10, 'metric': 'accuracy'},
@@ -23,4 +24,10 @@ DATASET = {
     'bbbp': {'name': 'bbbp', 'level': 'graph', 'task_dim': 1, 'metric': 'auc'},
     'muv': {'name': 'muv', 'level': 'graph', 'task_dim': 17, 'metric': 'auc'},
     'toxcast': {'name': 'toxcast', 'level': 'graph', 'task_dim': 588, 'metric': 'auc'},
+    'bookhis-link': {'name': 'bookhis-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
+    'bookchild-link': {'name': 'bookchild-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
+    'elephoto-link': {'name': 'elephoto-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
+    'elecomp-link': {'name': 'elecomp-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
+    'sportsfit-link': {'name': 'sportsfit-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
+    'products-link': {'name': 'products-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'}
 }

@@ -195,6 +195,7 @@ def main(params):
         offline=params.offline_log,
     )
 
+    do_you_need_best = True if isinstance(data_multiple, int) else False
     val_res, test_res = lightning_fit(
         wandb_logger,
         pred_model,
@@ -202,7 +203,7 @@ def main(params):
         metrics,
         params.num_epochs,
         save_model=True,
-        load_best=False,
+        load_best=do_you_need_best,
         reload_freq=1,
         test_rep=params.test_rep,
         val_interval=1,
