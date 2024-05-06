@@ -187,6 +187,8 @@ def main(params):
     exp_config.test_state_name = test_state
 
     pred_model = GraphPredLightning(exp_config, model, metrics)
+    if params.gnn_load_path is not None:
+        pred_model.load_from_checkpoint(params.gnn_load_path)
 
     wandb_logger = WandbLogger(
         project=params.log_project,

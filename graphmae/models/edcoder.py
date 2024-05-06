@@ -14,7 +14,8 @@ from torch_geometric.utils import dropout_edge
 from torch_geometric.utils import add_self_loops, remove_self_loops
 from torch_geometric.nn.models import GCN
 from sklearn.linear_model import LogisticRegression
-
+from ogb.graphproppred.mol_encoder import AtomEncoder,BondEncoder
+from torch_geometric.utils import degree
 
 
 def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropout, activation, residual, norm, nhead, nhead_out, attn_drop, negative_slope=0.2, concat_out=True, embed_mode = 'nofeat') -> nn.Module:
@@ -75,6 +76,15 @@ def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropo
         )
     elif m_type == "linear":
         mod = nn.Linear(in_dim, out_dim)
+    elif m_type == 'ggcn':
+        mod = GraphEncoder(
+            num_layers=num_layers,
+            output_dim=num_hidden,
+            node_hidden_dim=num_hidden,
+            edge_hidden_dim=num_hidden,
+            gnn_model='gcn',
+            mode=embed_mode
+        )
     else:
         raise NotImplementedError
     
@@ -103,7 +113,14 @@ class PreModel(nn.Module):
             replace_rate: float = 0.1,
             alpha_l: float = 2,
             concat_hidden: bool = False,
-            mode: str = 'nofeat'
+            mode: str = 'nofeat',
+            positional_embedding_size=32,
+            llm_embedding_size=384,
+            max_degree=128,
+            degree_embedding_size=32,
+            output_dim=32,
+            node_hidden_dim=32,
+            edge_hidden_dim=32
          ):
         super(PreModel, self).__init__()
         self._mask_rate = mask_rate
@@ -128,6 +145,22 @@ class PreModel(nn.Module):
 
         dec_in_dim = num_hidden
         dec_num_hidden = num_hidden // nhead_out if decoder_type in ("gat", "dotgat") else num_hidden 
+
+        self.mode = mode 
+        if self.mode == 'nofeat':
+            node_input_dim = positional_embedding_size + degree_embedding_size + 1
+        elif self.mode == 'llm':
+            node_input_dim = llm_embedding_size
+        elif self.mode == 'atomencoder':
+            self.atom_encoder = AtomEncoder(emb_dim = node_hidden_dim)
+            self.bond_encoder = BondEncoder(emb_dim = edge_hidden_dim)
+            node_input_dim = -1
+        self.max_degree = max_degree
+
+        if self.mode == 'nofeat':
+            self.degree_embedding = torch.nn.Embedding(
+                num_embeddings=max_degree + 1, embedding_dim=degree_embedding_size
+            )
 
         # build encoder
         self.encoder = setup_module(
@@ -216,6 +249,7 @@ class PreModel(nn.Module):
             token_nodes = mask_nodes
             out_x[mask_nodes] = 0.0
         
+        import ipdb; ipdb.set_trace()
         out_x[token_nodes] += self.enc_mask_token
 
         return out_x, (mask_nodes, keep_nodes)
@@ -224,21 +258,33 @@ class PreModel(nn.Module):
         """
             batch and index are used to fill the position
         """
+        if self.mode == 'nofeat':
+            ## x is positional encoding in this case
+            deg = degree(edge_index[0], x.size(0), dtype=x.dtype)
+            deg = torch.clamp(deg, 0, self.max_degree)
+            deg_emb = self.degree_embedding(deg)
+            x = deg_emb
+        elif self.mode == 'atomencoder':
+            x = self.atom_encoder(x)
+            edge_attr = self.bond_encoder(edge_attr)
         # ---- attribute reconstruction ----
         loss = self.mask_attr_prediction(x, edge_index)
         loss_item = {"loss": loss.item()}
         return loss, loss_item
     
-    def mask_attr_prediction(self, x, edge_index):
+    def mask_attr_prediction(self, x, edge_index, edge_attr=None):
         use_x, (mask_nodes, keep_nodes) = self.encoding_mask_noise(x, self._mask_rate)
 
         if self._drop_edge_rate > 0:
             use_edge_index, masked_edges = dropout_edge(edge_index, self._drop_edge_rate)
             use_edge_index = add_self_loops(use_edge_index)[0]
+            if edge_attr is not None:
+                edge_attr = edge_attr[masked_edges]
         else:
             use_edge_index = edge_index
 
-        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, return_hidden=True)
+
+        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, edge_attr, return_hidden=True)
         if self._concat_hidden:
             enc_rep = torch.cat(all_hidden, dim=1)
 

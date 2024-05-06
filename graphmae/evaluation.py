@@ -231,9 +231,9 @@ def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy'
     else:
         criterion = torch.nn.BCEWithLogitsLoss()
 
-    train_loader = DataLoader(EmbeddingDataset(embedding[train_mask], labels[train_mask]), batch_size=128, shuffle=True)
-    val_loader = DataLoader(EmbeddingDataset(embedding[val_mask], labels[val_mask]), batch_size=128, shuffle=False)
-    test_loader = DataLoader(EmbeddingDataset(embedding[test_mask], labels[test_mask]), batch_size=128, shuffle=False)
+    train_loader = DataLoader(EmbeddingDataset(embedding[train_mask], labels[train_mask]), batch_size=5000, shuffle=True)
+    val_loader = DataLoader(EmbeddingDataset(embedding[val_mask], labels[val_mask]), batch_size=5000, shuffle=False)
+    test_loader = DataLoader(EmbeddingDataset(embedding[test_mask], labels[test_mask]), batch_size=5000, shuffle=False)
 
 
     best_val_acc = 0

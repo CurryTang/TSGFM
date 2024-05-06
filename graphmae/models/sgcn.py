@@ -194,8 +194,7 @@ class GraphEncoder(torch.nn.Module):
         )
         self.norm = norm
     
-    def forward(self, data):
-        x, edge_index, edge_attr = data.x, data.edge_index, data.xe
+    def forward(self, x, edge_index, edge_attr = None):
         if self.mode == 'nofeat':
             ## x is positional encoding in this case
             deg = degree(edge_index[0], x.size(0), dtype=x.dtype)

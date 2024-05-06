@@ -1,6 +1,7 @@
 from .edcoder import PreModel
 from .gat import GAT
 from torch_geometric.nn.models import GCN
+from .sgcn import GraphEncoder
 from .mlp import MLP
 import torch
 from ..config import DATASET as task_config
@@ -95,6 +96,15 @@ def build_model_backbone(args, in_dim, out_dim):
             activation=args.activation,
             norm=create_norm(args.norm),
             encoding=False
+        )
+    elif args.encoder == 'ggcn':
+        return GraphEncoder(
+            num_layers = args.num_layers,
+            output_dim=args.num_hidden,
+            node_hidden_dim=args.num_hidden,
+            edge_hidden_dim=args.num_hidden,
+            gnn_type='gcn',
+            mode=args.embed_mode
         )
 
 
