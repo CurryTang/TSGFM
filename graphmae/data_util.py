@@ -114,3 +114,10 @@ def unify_dataset_loader(dataset_names, args):
         else:
             raise ValueError(f"Unknown dataset level: {level}")
     return ds
+
+
+
+def segments_data_loader(segment_path):
+    all_files = os.listdir(mag240m_segments_path)
+    all_files = sorted(all_files)
+    

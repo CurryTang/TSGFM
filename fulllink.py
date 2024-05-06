@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader
 from torch_sparse import SparseTensor
 import torch_geometric.transforms as T
 from torch_geometric.nn import GCNConv, SAGEConv
-
+from torch_geometric.transforms import SIGN, ToSparseTensor
+from torch.nn import Linear
 from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
-from graphmae.data_util import unify_dataset_loader
 from graphmae.utils import build_args
-from torch_geometric.transforms import ToSparseTensor
+from graphmae.data_util import unify_dataset_loader
 import numpy as np
 
 def keep_attrs_for_data(data):
@@ -19,6 +19,30 @@ def keep_attrs_for_data(data):
         if k not in ['x', 'edge_index', ]:
             data[k] = None
     return data
+
+class MLP(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers,
+                 dropout):
+        super(MLP, self).__init__()
+
+        self.layers = torch.nn.ModuleList()
+        self.layers.append(Linear(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.layers.append(Linear(hidden_channels, hidden_channels))
+        self.layers.append(Linear(hidden_channels, out_channels))
+        self.dropout = dropout
+    def reset_parameters(self):
+        for lin in self.layers:
+            lin.reset_parameters()
+
+    def forward(self, x, adj_t):
+        for layer in self.layers[:-1]:
+            x = layer(x)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.layers[-1](x)
+        return x
+
 
 
 class GCN(torch.nn.Module):
@@ -195,7 +219,7 @@ def test(model, predictor, dataset, evaluator, batch_size, device):
     neg_test_pred = torch.cat(neg_test_preds, dim=0)
 
     results = {}
-    for K in [20, 50, 100]:
+    for K in [20, 50, 100, 1000]:
         evaluator.K = K
         train_hits = evaluator.eval({
             'y_pred_pos': pos_train_pred,
@@ -271,9 +295,15 @@ def main():
     # dataset = PygLinkPropPredDataset(name='ogbl-collab')
     
     ## train stage
-    model = GCN(args.feature_dim, args.num_hidden,
+    if args.encoder == 'gcn':
+        model = GCN(args.feature_dim, args.num_hidden,
         args.num_hidden, args.num_layers,
         args.in_drop).to(device)
+    elif args.encoder == 'mlp':
+        model = MLP(args.feature_dim, args.num_hidden, args.num_hidden, args.num_layers, args.in_drop).to(device)
+    else:
+        ## sign
+        model = MLP(args.feature_dim, args.num_hidden, args.num_hidden, args.num_layers, args.in_drop).to(device)
 
     predictor = LinkPredictor(args.num_hidden, args.num_hidden, 1,
                               args.num_layers, args.in_drop).to(device)
@@ -282,15 +312,13 @@ def main():
 
     for d in datasets:
         d._data = keep_attrs_for_data(d._data)
+        if args.encoder == 'sign':
+            d._data = SIGN(K = args.num_layers)(d._data)
         d._data = ToSparseTensor(remove_edge_index=False)(d._data)
+        
     
     train_over_multiple_datasets(model, predictor, datasets, evaluator, args, device)
 
-    
 
-        
-
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

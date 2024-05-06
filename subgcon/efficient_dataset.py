@@ -43,6 +43,11 @@ class SubgraphDataset(InMemoryDataset, ABC):
         """
 
 
+class SegmentsDataset(SubgraphDataset):
+    def __init__(segments_path, topk=2048):
+        pass
+
+
 
 class NodeSubgraphDataset(SubgraphDataset):
     def __init__(self, data, output_path, topk=50, alpha=0.85, eps=1e-9, name = 'cora', sample = 1, split_mode = 'subgraph'):

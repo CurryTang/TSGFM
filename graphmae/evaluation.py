@@ -257,26 +257,22 @@ def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy'
         
         with torch.no_grad():
             lr.eval()
-            pred = []
-            true = []
-            for x, y in val_loader:
-                x = lr(x)
-                pred.append(x)
-                true.append(y)
-            pred = torch.cat(pred, dim=0)
-            true = torch.cat(true, dim=0)
-            val_acc = eval_func(pred, true, m_name)
-            val_loss = criterion(pred, true)
-            pred = []
-            true = []
-            for x, y in test_loader:
-                x = lr(x)
-                pred.append(x)
-                true.append(y)
-            pred = torch.cat(pred, dim=0)
-            true = torch.cat(true, dim=0)
-            test_acc = eval_func(pred, true, m_name)
-            test_loss = criterion(pred, true)
+            pred = lr(embedding)
+            val_pred = pred[val_mask]
+            val_labels = labels[val_mask]
+            is_labeled = val_labels == val_labels
+            val_pred = val_pred[is_labeled]
+            val_labels = val_labels[is_labeled]
+            test_pred = pred[test_mask]
+            test_labels = labels[test_mask]
+            is_labeled = test_labels == test_labels
+            test_pred = test_pred[is_labeled]
+            test_labels = test_labels[is_labeled]
+            val_acc = eval_func(pred[val_mask], labels[val_mask], m_name)
+            val_loss = criterion(val_pred, val_labels)
+            test_acc = eval_func(pred[test_mask], labels[test_mask], m_name)
+            test_loss = criterion(test_pred, test_labels)
+        
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
             best_val_epoch = epoch

@@ -9,15 +9,72 @@ task_names:
   - "cora_node"
   - "pubmed_link"
   - "pubmed_node"
+  - "citeseer_link"
+  - "citeseer_node"
+  - "arxiv"
+  - "arxiv23"
+  - "bookhis"
+  - "bookchild"
+  - "elecomp"
+  - "elephoto"
+  - "sportsfit"
+  - "products"
+  - "wikics"
+  - "chemblpre"
+  - "chempcba"
+  - "chemhiv"
+  - "tox21"
+  - "toxcast"
+  - "bace"
+  - "bbbp"
+  - "muv"
 
 d_multiple:
-  - 1.5
-  - 2
-  - 0.5
-  - 2.5
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
 
 d_min_ratio:
   - 1
   - 1
-  - 0.1
-  - 2
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1

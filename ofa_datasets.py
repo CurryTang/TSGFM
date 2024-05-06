@@ -146,6 +146,15 @@ class GraphTextDataset(DatasetWithCollate, ABC):
         else:
             return self.process_label_func(self.class_emb, label)
 
+class VeryLargeGraphDataset(GraphTextDataset):
+    """
+    Dataset for very large graphs, if stored in Data object, will cost too much storage.
+    """
+
+    def __init__(self, pyg_graph, class_emb, pyg_graph, class_emb, prompt_edge_emb, data_idx, hop=2, class_mapping=None, to_undirected=False, process_label_func=None, adj=None, **kwargs):
+        super().__init__(pyg_graph, process_label_func, **kwargs)
+
+
 
 class SubgraphDataset(GraphTextDataset):
     """
@@ -410,6 +419,10 @@ class GraphListDataset(GraphTextDataset):
             [torch.arange(n_feat_node, n_feat_node + len(class_emb), dtype=torch.long).repeat_interleave(n_feat_node),
              torch.arange(n_feat_node, dtype=torch.long).repeat(1, len(class_emb)).view(-1)], dim=0, )
         return prompt_edge
+
+
+class MassiveDataset(GraphTextDataset):
+    pass
 
 
 class GraphListNopromptDataset(GraphListDataset):
