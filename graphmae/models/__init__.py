@@ -49,6 +49,7 @@ def build_model(args):
         replace_rate=replace_rate,
         alpha_l=alpha_l,
         concat_hidden=concat_hidden,
+        mode=args.embed_mode
     )
     return model
 

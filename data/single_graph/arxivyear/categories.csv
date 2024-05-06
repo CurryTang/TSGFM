@@ -1,0 +1,6 @@
+name, description							
+"paper from 1971 to 2014",	"Foundations of CS, symbolic computation, early AI (rule-based systems), formal methods, programming language theory"							
+"paper from 2014 to 2016",	"Rise of deep learning, convolutional neural networks, natural language processing, computer vision, reinforcement learning"							
+"paper from 2016 to 2018",	"Refinement of deep learning architectures, transformers, attention mechanisms, NLP applications, generative models (GANs)"							
+"paper from 2018 to 2019",	"Large language models, ethics in AI, explainability, adversarial machine learning, few-shot/zero-shot learning"						
+"paper from 2019 to 2020",	"Multimodal learning (text + vision), graph neural networks, self-supervised learning, AI for science, reinforcement learning"				

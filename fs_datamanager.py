@@ -142,7 +142,7 @@ class FewShotDataset(Dataset):
             ]
         return cls_split_lst
 
-    def label_to_index(self) -> (dict, torch.tensor):
+    def label_to_index(self):
         """
         Generate a dictionary mapping labels to index list
         :return: dictionary: {label: [list of index]}

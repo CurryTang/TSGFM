@@ -27,12 +27,12 @@ def test(model, evaluator, train_loader, val_loader, test_loader, args, device, 
     print('starting testing')
     t0 = time.time()
     model.eval()
-    print("get train predictions")
+    #print("get train predictions")
     test_func = get_test_func(args.model)
     pos_train_pred, neg_train_pred, train_pred, train_true = test_func(model, train_loader, device, args, split='train')
-    print("get val predictions")
+    #print("get val predictions")
     pos_val_pred, neg_val_pred, val_pred, val_true = test_func(model, val_loader, device, args, split='val')
-    print("get test predictions")
+    #print("get test predictions")
     pos_test_pred, neg_test_pred, test_pred, test_true = test_func(model, test_loader, device, args, split='test')
 
     if eval_metric == 'hits':
@@ -54,12 +54,12 @@ def test(model, evaluator, train_loader, val_loader, test_loader, args, device, 
 def get_preds(model, loader, device, args, emb=None, split=None):
     n_samples = get_split_samples(split, args, len(loader.dataset))
     y_pred, y_true = [], []
-    pbar = tqdm(loader, ncols=70)
+    # pbar = tqdm(loader, ncols=70)
     if args.wandb:
         wandb.log({f"inference_{split}_total_batches": len(loader)})
     batch_processing_times = []
     t0 = time.time()
-    for batch_count, data in enumerate(pbar):
+    for batch_count, data in enumerate(loader):
         start_time = time.time()
         # todo this should not get hit, refactor out the if statement
         if args.model == 'BUDDY':

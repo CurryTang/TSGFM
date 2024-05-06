@@ -13,7 +13,7 @@ from subgcon.models import SugbCon, Encoder, Scorer, Pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
 from graphmae.models import build_model, TaskHeadModel
-from graphmae.evaluation import linear_test, link_linear_test
+from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test
 from graphmae.models.gcn import GNN_node
 import logging
 import os.path as osp
@@ -67,7 +67,10 @@ def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln
         index = batch.ptr[:-1]
         if modeln == 'subgcon':
             edge_feat = batch.xe if hasattr(batch, 'xe') else None
-            node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device), edge_feat.to(device))
+            if edge_feat is not None:
+                node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device), edge_feat.to(device))
+            else:
+                node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
         elif modeln == 'graphmae':
             # import ipdb; ipdb.set_trace()
             out = model.embed(batch.x.to(device), batch.edge_index.to(device))
@@ -93,7 +96,11 @@ def node_level_test(model, dataset, loader, args, device):
         all_emb = get_all_node_emb(model, num_node, loader, args, device, level = 'node', modeln=args.method)
 
     dataset.data.num_classes = dataset.data.y.max().item() + 1
-    test_acc, estp_test_acc, val_acc = linear_test(all_emb, dataset.data, 100, device)
+    if args.cpuinf:
+        test_acc, estp_test_acc, val_acc = linear_test(all_emb, dataset, 100, device, eval_device='cpu')
+    else:
+        test_acc, estp_test_acc, val_acc = linear_mini_batch_test(all_emb, dataset, 100, device, m_name = DATASET[dataset.name]['metric'])
+    
     # val_acc, test_acc = model.test(train_z, train_y, val_z, val_y, test_z, test_y)
     print('val_acc = {} test_acc = {}'.format(val_acc, estp_test_acc))
     return val_acc, test_acc
@@ -105,7 +112,7 @@ def link_level_test(model, dataset, loader, args, device):
     
     evaluator = Evaluator(name='ogbl-ppa')
     dataset.data.num_classes = dataset.data.y.max().item() + 1
-    test_acc, val_acc = link_linear_test(z, dataset.data, 100, device, evaluator)
+    test_acc, val_acc = link_linear_test(z, dataset, 100, device, evaluator)
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc 
 
@@ -114,7 +121,7 @@ def graph_level_test(model, dataset, loader, args, device):
     with torch.no_grad():
         z = get_all_node_emb(model, 1, loader, args, device, level = 'graph', modeln=args.method)
     
-    test_acc, estp_test_acc, val_acc = linear_test(z, dataset, 100, device, m_name = DATASET[dataset.name]['metric'])
+    test_acc, estp_test_acc, val_acc = linear_mini_batch_test(z, dataset, 100, device, m_name = DATASET[dataset.name]['metric'])
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc
 

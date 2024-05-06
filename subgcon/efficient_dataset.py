@@ -16,6 +16,15 @@ import os.path as osp
 import numpy as np
 import torch
 from torch_geometric.utils import index_to_mask
+from torch_geometric.loader import NeighborLoader, ShaDowKHopSampler
+from tqdm import tqdm
+
+
+def keep_attrs_for_data(data):
+    for k in data.keys():
+        if k not in ['x', 'edge_index', 'edge_attr', 'y']:
+            delattr(data, k)
+    return data
 
 
 class SubgraphDataset(InMemoryDataset, ABC):
@@ -32,6 +41,11 @@ class SubgraphDataset(InMemoryDataset, ABC):
             Given a list: data_list, 
             this can be a list of node indexes, a list of edge indexes, or a list of graph indices
         """
+
+
+class SegmentsDataset(SubgraphDataset):
+    def __init__(segments_path, topk=2048):
+        pass
 
 
 
@@ -59,6 +73,7 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.sample = sample
         self.split_mode = split_mode
         self.saint_loader = None
+        self.loader = None
         self.build() 
 
     def build(self):
@@ -68,37 +83,32 @@ class NodeSubgraphDataset(SubgraphDataset):
             os.makedirs(self.output_path, exist_ok=True)
             self.saint_loader = GraphSAINTRandomWalkSampler(self.data, batch_size=self.topk, walk_length=2, num_steps=5, sample_coverage=100, save_dir=self.output_path)
             return
-        if osp.exists(self.output_name):
-            print(f"Loading subgraphs for node-level dataset {self.name}")
-            self.subgraphs = torch.load(self.output_name)
-            return
-        self.subgraphs = []
         print(f"Building subgraphs for node-level dataset {self.name}")
-        idx = np.arange(self.num_nodes)
-        ppr_matrix = topk_ppr_matrix(self.csr_data, self.alpha, self.eps, idx, self.topk)
-        for i in trange(self.num_nodes):
-            nodes = torch.tensor(ppr_matrix[i].indices)
-            x = self.data.x[nodes]
-            labels = self.data.y[i]
-            subg, _ = pyg.utils.subgraph(nodes, self.data.edge_index, relabel_nodes=True, num_nodes=self.num_nodes)
-            self.subgraphs.append(pyg.data.Data(x=x, edge_index=subg, y=labels))
-        dir_name = osp.dirname(self.output_name)
-        os.makedirs(dir_name, exist_ok=True)
-        torch.save(self.subgraphs, self.output_name)
+        idx = torch.arange(self.num_nodes)
+        ## here's a tradeoff between randomness and efficiency
+        self.data = keep_attrs_for_data(self.data)
+        loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
+        self.loader = loader
 
-    def search(self, batch_size = 32, shuffle = False, time='train'):
+    def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
         #Extract subgraphs for nodes in the list
         if self.topk != -1:
             if self.split_mode == 'graphsaint':
                 if time == 'train':
                     return self.saint_loader
                 else:
-                    return DataLoader([self.data], batch_size=1, shuffle=False)
+                    if infmode == 'cpu':
+                        return DataLoader([self.data], batch_size=1, shuffle=False)
+                    else:
+                        if self.loader is not None:
+                            return self.loader
+                        else:
+                            self.build()
+                            return self.loader
             else:
-                if self.sample != 1 and time == 'train':
-                    idx = torch.randperm(self.num_nodes)[:int(self.num_nodes * self.sample)]
-                    return DataLoader([self.subgraphs[i] for i in idx], batch_size=batch_size, shuffle=shuffle)
-                return DataLoader(self.subgraphs, batch_size=batch_size, shuffle=shuffle)
+                if self.loader is None:
+                    self.build()
+                return self.loader
         else:
             return DataLoader([self.data], batch_size=1, shuffle=False)
     
@@ -118,6 +128,8 @@ class LinkSubgraphDataset(SubgraphDataset):
         self.val_ratio = val_ratio
         splits = RandomLinkSplit(num_val=val_ratio, num_test=1-train_ratio-val_ratio, is_undirected=True, add_negative_train_samples=False)
         train_data, val_data, test_data = splits(data)
+        self.edge_index = train_data.edge_index
+        self.train_edge_index = train_data.edge_label_index
         self.data.edge_index = train_data.edge_index
         self.data.train_edge_index = train_data.edge_label_index
         val_edge_index = val_data.edge_label_index
@@ -125,10 +137,10 @@ class LinkSubgraphDataset(SubgraphDataset):
         train_edge_label = train_data.edge_label
         val_edge_label = val_data.edge_label
         test_edge_label = test_data.edge_label
-        self.data.pos_val_edge_index = val_edge_index[:, val_edge_label == 1]
-        self.data.pos_test_edge_index = test_edge_index[:, test_edge_label == 1]
-        self.data.neg_val_edge_index = val_edge_index[:, val_edge_label == 0]
-        self.data.neg_test_edge_index = test_edge_index[:, test_edge_label == 0]
+        self.pos_val_edge_index = val_edge_index[:, val_edge_label == 1]
+        self.pos_test_edge_index = test_edge_index[:, test_edge_label == 1]
+        self.neg_val_edge_index = val_edge_index[:, val_edge_label == 0]
+        self.neg_test_edge_index = test_edge_index[:, test_edge_label == 0]
         self.csr_data = pyg.utils.to_scipy_sparse_matrix(self.data.edge_index).tocsr()
         self.num_nodes = self.data.x.size(0)
         self.sample = sample
@@ -143,37 +155,31 @@ class LinkSubgraphDataset(SubgraphDataset):
             os.makedirs(self.output_path, exist_ok=True)
             self.saint_loader = GraphSAINTRandomWalkSampler(self.data, batch_size=self.topk, walk_length=2, num_steps=5, sample_coverage=100, save_dir=self.output_path)
             return
-        if osp.exists(self.output_name):
-            print(f"Loading subgraphs for link-level dataset {self.name}")
-            self.subgraphs = torch.load(self.output_name)
-            return
-        self.subgraphs = []
-        print(f"Building subgraphs for link-level dataset {self.name}")
-        idx = np.arange(self.num_nodes)
-        ppr_matrix = topk_ppr_matrix(self.csr_data, self.alpha, self.eps, idx, self.topk)
-        for i in trange(self.num_nodes):
-            nodes = torch.tensor(ppr_matrix[i].indices)
-            x = self.data.x[nodes]
-            labels = self.data.y[i]
-            subg, _ = pyg.utils.subgraph(nodes, self.data.edge_index, relabel_nodes=True, num_nodes=self.num_nodes)
-            self.subgraphs.append(pyg.data.Data(x=x, edge_index=subg, y=labels))
-        dir_name = osp.dirname(self.output_name)
-        os.makedirs(dir_name, exist_ok=True)
-        torch.save(self.subgraphs, self.output_name)
+        idx = torch.arange(self.num_nodes)
+        ## here's a tradeoff between randomness and efficiency
+        self.data = keep_attrs_for_data(self.data)
+        loader = ShaDowKHopSampler(self.data, depth=2, num_neighbors=10, node_idx=idx, batch_size=128, num_workers=12, shuffle=True)
+        self.loader = loader
 
-    def search(self, batch_size = 32, shuffle = False, time='train'):
+    def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
         #Extract subgraphs for nodes in the list
         if self.topk != -1:
             if self.split_mode == 'graphsaint':
                 if time == 'train':
                     return self.saint_loader
                 else:
-                    return DataLoader([self.data], batch_size=1, shuffle=False)
+                    if infmode == 'cpu':
+                        return DataLoader([self.data], batch_size=1, shuffle=False)
+                    else:
+                        if self.loader is not None:
+                            return self.loader
+                        else:
+                            self.build()
+                            return self.loader
             else:
-                if self.sample != 1 and time == 'train':
-                    idx = torch.randperm(self.num_nodes)[:int(self.num_nodes * self.sample)]
-                    return DataLoader([self.subgraphs[i] for i in idx], batch_size=batch_size, shuffle=shuffle)
-                return DataLoader(self.subgraphs, batch_size=batch_size, shuffle=shuffle)
+                if self.loader is None:
+                    self.build()
+                return self.loader
         else:
             return DataLoader([self.data], batch_size=1, shuffle=False)
 

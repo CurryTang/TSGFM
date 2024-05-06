@@ -166,11 +166,14 @@ def sample_data(data, sample_arg):
     return data[sample_indices]
 
 
-def get_train_val_test_datasets(dataset, train_data, val_data, test_data, args):
-    sample = 'all' if not args.sample_size else args.sample_size
-    path = f'{dataset.root}_seal_{sample}_hops_{args.num_hops}_maxdist_{args.max_dist}_mnph_{args.max_nodes_per_hop}{args.data_appendix}'
+def get_train_val_test_datasets(root, train_data, val_data, test_data, args, name):
+    sample = 'all'
+    if args.node_label == 'drnl':
+        path = f'{root}_seal_{sample}_hops_{args.num_hops}_maxdist_{args.max_dist}_mnph_{args.max_nodes_per_hop}_{name}'
+    else:
+        path = f'{root}_seal_{sample}_hops_{args.num_hops}_maxdist_{args.max_dist}_mnph_{args.max_nodes_per_hop}_{args.node_label}_{name}'
     print(f'seal data path: {path}')
-    use_coalesce = True if args.dataset_name == 'ogbl-collab' else False
+    use_coalesce = False
     # get percents used only for naming the SEAL dataset files and caching
     train_percent, val_percent, test_percent = 1 - (args.val_pct + args.test_pct), args.val_pct, args.test_pct
     # probably should be an attribute of the dataset and not hardcoded
@@ -195,7 +198,7 @@ def get_train_val_test_datasets(dataset, train_data, val_data, test_data, args):
         f'{pos_val_edge.shape[0]} pos, {neg_val_edge.shape[0]} neg val edges '
         f'and {pos_test_edge.shape[0]} pos, {neg_test_edge.shape[0]} neg test edges for supervision')
 
-    dataset_class = 'SEALDynamicDataset' if args.dynamic_train else 'SEALDataset'
+    dataset_class = 'SEALDataset'
     train_dataset = eval(dataset_class)(
         path,
         train_data,
@@ -435,7 +438,7 @@ class HashDataset(Dataset):
 
     def __init__(
             self, root, split, data, pos_edges, neg_edges, args, use_coalesce=False,
-            directed=False, **kwargs):
+            directed=False, name="cora", **kwargs):
         if args.model != 'ELPH':  # elph stores the hashes directly in the model class for message passing
             self.elph_hashes = ElphHashes(args)  # object for hash and subgraph feature operations
         self.split = split  # string: train, valid or test
@@ -455,6 +458,7 @@ class HashDataset(Dataset):
         self.hll_p = args.hll_p
         self.subgraph_features = None
         self.hashes = None
+        self.name = name
         super(HashDataset, self).__init__(root)
 
         self.links = torch.cat([self.pos_edges, self.neg_edges], 0)  # [n_edges, 2]
@@ -527,9 +531,9 @@ class HashDataset(Dataset):
         @return: Float Tensor [num_nodes, hidden_dim]
         """
         if sign_k == 0:
-            feature_name = f'{self.root}_{self.split}_featurecache.pt'
+            feature_name = f'{self.root}_{self.split}_featurecache_{self.name}_.pt'
         else:
-            feature_name = f'{self.root}_{self.split}_k{sign_k}_featurecache.pt'
+            feature_name = f'{self.root}_{self.split}_k{sign_k}_featurecache_{self.name}_.pt'
         if self.load_features and os.path.exists(feature_name):
             print('loading node features from disk')
             x = torch.load(feature_name).to(edge_index.device)
@@ -571,14 +575,11 @@ class HashDataset(Dataset):
         else:
             hop_str = ''
         end_str = f'_{hop_str}subgraph_featurecache.pt'
-        if self.args.dataset_name == 'ogbl-collab' and self.args.year > 0:
-            year_str = f'year_{self.args.year}'
-        else:
-            year_str = ''
+        year_str = ''
         if num_negs == 1 or self.split != 'train':
-            subgraph_cache_name = f'{self.root}{self.split}{year_str}{end_str}'
+            subgraph_cache_name = f'{self.root}{self.split}{year_str}{end_str}_{self.name}_'
         else:
-            subgraph_cache_name = f'{self.root}{self.split}_negs{num_negs}{year_str}{end_str}'
+            subgraph_cache_name = f'{self.root}{self.split}_negs{num_negs}{year_str}{end_str}_{self.name}_'
         return subgraph_cache_name, year_str, hop_str
 
     def _preprocess_subgraph_features(self, device, num_nodes, num_negs=1):
@@ -592,9 +593,9 @@ class HashDataset(Dataset):
         if not found_subgraph_features:
             if self.cache_subgraph_features:
                 print(f'no subgraph features found at {subgraph_cache_name}')
-            print('generating subgraph features')
-            hash_name = f'{self.root}{self.split}{year_str}_{hop_str}hashcache.pt'
-            cards_name = f'{self.root}{self.split}{year_str}_{hop_str}cardcache.pt'
+            # print('generating subgraph features')
+            hash_name = f'{self.root}{self.split}{year_str}_{hop_str}hashcache{self.name}_.pt'
+            cards_name = f'{self.root}{self.split}{year_str}_{hop_str}cardcache{self.name}_.pt'
             if self.load_hashes and os.path.exists(hash_name):
                 print('loading hashes from disk')
                 hashes = torch.load(hash_name)
@@ -611,11 +612,11 @@ class HashDataset(Dataset):
                 if self.load_hashes:
                     torch.save(cards, cards_name)
                     torch.save(hashes, hash_name)
-            print('constructing subgraph features')
+            # print('constructing subgraph features')
             start_time = time()
             self.subgraph_features = self.elph_hashes.get_subgraph_features(self.links, hashes, cards,
                                                                             self.args.subgraph_feature_batch_size)
-            print("Preprocessed subgraph features in: {:.2f} seconds".format(time() - start_time))
+            # print("Preprocessed subgraph features in: {:.2f} seconds".format(time() - start_time))
             assert self.subgraph_features.shape[0] == len(
                 self.links), 'subgraph features are a different shape link object. Delete subgraph features file and regenerate'
             if self.cache_subgraph_features:
@@ -651,10 +652,10 @@ class HashDataset(Dataset):
         return subgraph_features, node_features, src_degree, dst_degree, RA, y
 
 
-def get_hashed_train_val_test_datasets(dataset, train_data, val_data, test_data, args, directed=False):
-    root = f'{dataset.root}/elph_'
+def get_hashed_train_val_test_datasets(root, train_data, val_data, test_data, args, name, directed=False):
+    root = f'{root}/elph_'
     print(f'data path: {root}')
-    use_coalesce = True if args.dataset_name == 'ogbl-collab' else False
+    use_coalesce = False
     pos_train_edge, neg_train_edge = get_pos_neg_edges(train_data)
     pos_val_edge, neg_val_edge = get_pos_neg_edges(val_data)
     pos_test_edge, neg_test_edge = get_pos_neg_edges(test_data)
@@ -664,14 +665,22 @@ def get_hashed_train_val_test_datasets(dataset, train_data, val_data, test_data,
         f'and {pos_test_edge.shape[0]} pos, {neg_test_edge.shape[0]} neg test edges for supervision')
     print('constructing training dataset object')
     train_dataset = HashDataset(root, 'train', train_data, pos_train_edge, neg_train_edge, args,
-                                use_coalesce=use_coalesce, directed=directed)
+                                use_coalesce=use_coalesce, directed=directed, name=name)
     print('constructing validation dataset object')
     val_dataset = HashDataset(root, 'valid', val_data, pos_val_edge, neg_val_edge, args,
-                              use_coalesce=use_coalesce, directed=directed)
+                              use_coalesce=use_coalesce, directed=directed, name=name)
     print('constructing test dataset object')
     test_dataset = HashDataset(root, 'test', test_data, pos_test_edge, neg_test_edge, args,
-                               use_coalesce=use_coalesce, directed=directed)
+                               use_coalesce=use_coalesce, directed=directed, name=name)
     return train_dataset, val_dataset, test_dataset
+
+# def get_normal_train_val_test_datasets(root, train_data, val_data, test_data, args, directed=False):
+#     ## root is not used
+#     pos_train_edge, neg_train_edge = get_pos_neg_edges(train_data)
+#     pos_val_edge, neg_val_edge = get_pos_neg_edges(val_data)
+#     pos_test_edge, neg_test_edge = get_pos_neg_edges(test_data)
+
+
 
 
 class HashedTrainEvalDataset(Dataset):

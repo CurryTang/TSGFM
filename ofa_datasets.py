@@ -146,6 +146,15 @@ class GraphTextDataset(DatasetWithCollate, ABC):
         else:
             return self.process_label_func(self.class_emb, label)
 
+class VeryLargeGraphDataset(GraphTextDataset):
+    """
+    Dataset for very large graphs, if stored in Data object, will cost too much storage.
+    """
+
+    def __init__(self, pyg_graph, class_emb, pyg_graph, class_emb, prompt_edge_emb, data_idx, hop=2, class_mapping=None, to_undirected=False, process_label_func=None, adj=None, **kwargs):
+        super().__init__(pyg_graph, process_label_func, **kwargs)
+
+
 
 class SubgraphDataset(GraphTextDataset):
     """
@@ -525,7 +534,10 @@ class FewShotDataset(DatasetWithCollate):
         noi_node_idx = noi_node_idx - 1
         meta_feat = torch.cat(feat_lst, dim=0)
         meta_n_nodes = len(meta_feat)
-        meta_feat = torch.cat([meta_feat, class_emb], dim=0)
+        if k_shot > 0:
+            meta_feat = torch.cat([meta_feat, self.query_graph_dataset.noi_node_emb.repeat_interleave(len(class_emb), dim=0)], dim=0)
+        else:
+            meta_feat = torch.cat([meta_feat, class_emb], dim=0)
         class_node_indices = torch.arange(meta_n_nodes, meta_n_nodes + n_way)
         spt_class_node_indices = class_node_indices.repeat_interleave(k_shot)
         meta_edge = torch.cat(edge_index, dim=-1) + offset.repeat_interleave(n_edge)
@@ -541,7 +553,7 @@ class FewShotDataset(DatasetWithCollate):
         new_subg = pyg.data.Data(meta_feat, meta_edge, y=qry_ind, edge_attr=meta_edge_feat, edge_type=meta_e_type)
 
         bin_labels = torch.zeros(new_subg.num_nodes, dtype=torch.float)
-        bin_labels[new_subg.num_nodes - n_way + qry_ind.view(-1):] = 1
+        bin_labels[new_subg.num_nodes - n_way + qry_ind.view(-1)] = 1
         new_subg.bin_labels = bin_labels
         set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - n_way, new_subg.num_nodes)))
         set_mask(new_subg, "noi_node_mask", noi_node_idx)
