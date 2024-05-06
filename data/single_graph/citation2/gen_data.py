@@ -261,3 +261,8 @@ class OgblCitation2WithText(OgbWithText):
         df.astype({"node idx": np.int64})
         node_idx = torch.tensor(df["node idx"].values.tolist(), dtype=torch.long)
         return node_idx
+    
+
+if __name__ == '__main__':
+    data = OgblCitation2WithText(root='/egr/research-dselab/chenzh85/nips/MyOFA/cache_data_minilm', tokenizer='sentence-transformers/all-MiniLM-L6-v2')
+    

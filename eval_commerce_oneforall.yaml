@@ -11,6 +11,7 @@ task_names:
   - "elephoto"
   - "sportsfit"
   - "products"
+  - "amazonratings"
 
 
 d_multiple:
@@ -20,9 +21,11 @@ d_multiple:
   - 1
   - 1
   - 1
+  - 1
 
 
 d_min_ratio:
+  - 1
   - 1
   - 1
   - 1

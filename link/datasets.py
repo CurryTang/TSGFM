@@ -474,8 +474,8 @@ class HashDataset(Dataset):
         else:
             self.edge_weight = torch.ones(data.edge_index.size(1), dtype=int)
         if self.directed:  # make undirected graphs like citation2 directed
-            print(
-                f'this is a directed graph. Making the adjacency matrix undirected to propagate features and calculate subgraph features')
+            # print(
+            #     f'this is a directed graph. Making the adjacency matrix undirected to propagate features and calculate subgraph features')
             self.edge_index, self.edge_weight = to_undirected(data.edge_index, self.edge_weight)
         else:
             self.edge_index = data.edge_index
@@ -535,13 +535,13 @@ class HashDataset(Dataset):
         else:
             feature_name = f'{self.root}_{self.split}_k{sign_k}_featurecache_{self.name}_.pt'
         if self.load_features and os.path.exists(feature_name):
-            print('loading node features from disk')
+            #print('loading node features from disk')
             x = torch.load(feature_name).to(edge_index.device)
         else:
-            print('constructing node features')
+            #print('constructing node features')
             start_time = time()
             x = self._generate_sign_features(data, edge_index, edge_weight, sign_k)
-            print("Preprocessed features in: {:.2f} seconds".format(time() - start_time))
+            #print("Preprocessed features in: {:.2f} seconds".format(time() - start_time))
             if self.load_features:
                 torch.save(x.cpu(), feature_name)
         return x
@@ -556,9 +556,9 @@ class HashDataset(Dataset):
         retval = False
         # look on disk
         if self.cache_subgraph_features and os.path.exists(name):
-            print(f'looking for subgraph features in {name}')
+            #print(f'looking for subgraph features in {name}')
             self.subgraph_features = torch.load(name).to(device)
-            print(f"cached subgraph features found at: {name}")
+            #print(f"cached subgraph features found at: {name}")
             assert self.subgraph_features.shape[0] == len(
                 self.links), 'subgraph features are inconsistent with the link object. Delete subgraph features file and regenerate'
             retval = True
@@ -591,24 +591,24 @@ class HashDataset(Dataset):
         subgraph_cache_name, year_str, hop_str = self._generate_file_names(num_negs)
         found_subgraph_features = self._read_subgraph_features(subgraph_cache_name, device)
         if not found_subgraph_features:
-            if self.cache_subgraph_features:
-                print(f'no subgraph features found at {subgraph_cache_name}')
+            # if self.cache_subgraph_features:
+            #     print(f'no subgraph features found at {subgraph_cache_name}')
             # print('generating subgraph features')
             hash_name = f'{self.root}{self.split}{year_str}_{hop_str}hashcache{self.name}_.pt'
             cards_name = f'{self.root}{self.split}{year_str}_{hop_str}cardcache{self.name}_.pt'
             if self.load_hashes and os.path.exists(hash_name):
-                print('loading hashes from disk')
+                #print('loading hashes from disk')
                 hashes = torch.load(hash_name)
                 if os.path.exists(cards_name):
-                    print('loading cards from disk')
+                    #print('loading cards from disk')
                     cards = torch.load(cards_name)
                 else:
                     print(f'hashes found at {hash_name}, but cards not found. Delete hashes and run again')
             else:
-                print('no hashes found on disk, constructing hashes...')
+                #print('no hashes found on disk, constructing hashes...')
                 start_time = time()
                 hashes, cards = self.elph_hashes.build_hash_tables(num_nodes, self.edge_index)
-                print("Preprocessed hashes in: {:.2f} seconds".format(time() - start_time))
+                #print("Preprocessed hashes in: {:.2f} seconds".format(time() - start_time))
                 if self.load_hashes:
                     torch.save(cards, cards_name)
                     torch.save(hashes, hash_name)
@@ -623,8 +623,8 @@ class HashDataset(Dataset):
                 torch.save(self.subgraph_features, subgraph_cache_name)
         if self.args.floor_sf and self.subgraph_features is not None:
             self.subgraph_features[self.subgraph_features < 0] = 0
-            print(
-                f'setting {torch.sum(self.subgraph_features[self.subgraph_features < 0]).item()} negative values to zero')
+            # print(
+            #     f'setting {torch.sum(self.subgraph_features[self.subgraph_features < 0]).item()} negative values to zero')
         if not self.use_zero_one and self.subgraph_features is not None:  # knock out the zero_one features (0,1) and (1,0)
             if self.max_hash_hops > 1:
                 self.subgraph_features[:, [4, 5]] = 0
@@ -654,22 +654,22 @@ class HashDataset(Dataset):
 
 def get_hashed_train_val_test_datasets(root, train_data, val_data, test_data, args, name, directed=False):
     root = f'{root}/elph_'
-    print(f'data path: {root}')
+    #print(f'data path: {root}')
     use_coalesce = False
     pos_train_edge, neg_train_edge = get_pos_neg_edges(train_data)
     pos_val_edge, neg_val_edge = get_pos_neg_edges(val_data)
     pos_test_edge, neg_test_edge = get_pos_neg_edges(test_data)
-    print(
-        f'before sampling, considering a superset of {pos_train_edge.shape[0]} pos, {neg_train_edge.shape[0]} neg train edges '
-        f'{pos_val_edge.shape[0]} pos, {neg_val_edge.shape[0]} neg val edges '
-        f'and {pos_test_edge.shape[0]} pos, {neg_test_edge.shape[0]} neg test edges for supervision')
-    print('constructing training dataset object')
+    # print(
+    #     f'before sampling, considering a superset of {pos_train_edge.shape[0]} pos, {neg_train_edge.shape[0]} neg train edges '
+    #     f'{pos_val_edge.shape[0]} pos, {neg_val_edge.shape[0]} neg val edges '
+    #     f'and {pos_test_edge.shape[0]} pos, {neg_test_edge.shape[0]} neg test edges for supervision')
+    # print('constructing training dataset object')
     train_dataset = HashDataset(root, 'train', train_data, pos_train_edge, neg_train_edge, args,
                                 use_coalesce=use_coalesce, directed=directed, name=name)
-    print('constructing validation dataset object')
+    #print('constructing validation dataset object')
     val_dataset = HashDataset(root, 'valid', val_data, pos_val_edge, neg_val_edge, args,
                               use_coalesce=use_coalesce, directed=directed, name=name)
-    print('constructing test dataset object')
+    #print('constructing test dataset object')
     test_dataset = HashDataset(root, 'test', test_data, pos_test_edge, neg_test_edge, args,
                                use_coalesce=use_coalesce, directed=directed, name=name)
     return train_dataset, val_dataset, test_dataset

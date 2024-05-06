@@ -46,7 +46,7 @@ def test(model, evaluator, train_loader, val_loader, test_loader, args, device, 
         results = evaluate_auc(val_pred, val_true, test_pred, test_true)
 
     print(f'testing ran in {time.time() - t0}')
-
+    print(results)
     return results
 
 

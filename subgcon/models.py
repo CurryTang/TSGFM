@@ -7,20 +7,21 @@ from torch_geometric.nn.inits import reset
 from sklearn.linear_model import LogisticRegression
 from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool, global_add_pool, SAGPooling
 
+
 EPS = 1e-15
 
 
-class Encoder(nn.Module):
-    def __init__(self, in_channels, hidden_channels):
-        super(Encoder, self).__init__()
-        self.hidden_channels = hidden_channels
-        self.conv = GCNConv(in_channels, self.hidden_channels) 
-        self.prelu = nn.PReLU(self.hidden_channels)
+# class Encoder(nn.Module):
+#     def __init__(self, in_channels, hidden_channels):
+#         super(Encoder, self).__init__()
+#         self.hidden_channels = hidden_channels
+#         self.conv = GCNConv(in_channels, self.hidden_channels) 
+#         self.prelu = nn.PReLU(self.hidden_channels)
 
-    def forward(self, x, edge_index, edge_attr=None):
-        x1 = self.conv(x, edge_index)
-        x1 = self.prelu(x1)
-        return x1 
+#     def forward(self, x, edge_index, edge_attr=None):
+#         x1 = self.conv(x, edge_index)
+#         x1 = self.prelu(x1)
+#         return x1 
   
         
 class Pool(nn.Module):

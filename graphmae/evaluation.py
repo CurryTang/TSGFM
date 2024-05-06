@@ -205,8 +205,8 @@ class EmbeddingDataset(Dataset):
     def __len__(self):
         return len(self.embeddings)
 
-
-    
+    def __getitem__(self, idx):
+        return self.embeddings[idx], self.labels[idx]
 
 def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
     lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)

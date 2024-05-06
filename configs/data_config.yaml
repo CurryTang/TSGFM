@@ -115,6 +115,13 @@ wikics: &wikics
   process_label_func: process_pth_label
   num_classes: 10
 
+arxivyear: &arxivyear
+  <<: *E2E-node
+  dataset_name: arxivyear
+  dataset_splitter: OGB_Splitter
+  process_label_func: process_pth_label
+  num_classes: 5
+
 link-eval-args: &link-eval-args
   remove_edge: False
   walk_length: null

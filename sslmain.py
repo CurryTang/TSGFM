@@ -8,8 +8,7 @@ from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 from torch_geometric.nn import global_mean_pool
 from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
-from subgcon.utils_mp import Subgraph, preprocess
-from subgcon.models import SugbCon, Encoder, Scorer, Pool
+from subgcon.models import SugbCon, Scorer, Pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
 from graphmae.models import build_model, TaskHeadModel
@@ -21,6 +20,7 @@ from tqdm import tqdm
 from graphmae.config import DATASET
 from ogb.linkproppred.evaluate import Evaluator
 import pytorch_warmup as warmup
+from torch_geometric.nn.models import GCN
 
 def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None, warmup_scheduler = None):
     # Model training
@@ -151,7 +151,7 @@ def main(args):
     if args.method == 'subgcon':
         if args.backbone == 'gcn_node':
             model = SugbCon(
-                hidden_channels=args.num_hidden, encoder=Encoder(feature_dim, args.num_hidden),
+                hidden_channels=args.num_hidden, encoder=GCN(feature_dim, args.num_hidden, args.num_layers, args.num_hidden, args.in_drop),
                 pool=Pool(in_channels=args.num_hidden),
                 scorer=Scorer(args.num_hidden)).to(device)
         elif args.backbone == 'gcn_graph':
