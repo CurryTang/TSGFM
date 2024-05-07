@@ -77,6 +77,8 @@ class OFAPygDataset(InMemoryDataset, ABC):
         return ["geometric_data_processed.pt", "texts.pkl", "data.pt"]
 
     def text2feature(self, texts):
+        if isinstance(texts, list) and len(texts) == 0:
+            return []
         if isinstance(texts[0], str):
             return self.data2vec(texts)
         return [self.text2feature(t) for t in texts]

@@ -151,7 +151,7 @@ class VeryLargeGraphDataset(GraphTextDataset):
     Dataset for very large graphs, if stored in Data object, will cost too much storage.
     """
 
-    def __init__(self, pyg_graph, class_emb, pyg_graph, class_emb, prompt_edge_emb, data_idx, hop=2, class_mapping=None, to_undirected=False, process_label_func=None, adj=None, **kwargs):
+    def __init__(self, pyg_graph, class_emb, prompt_edge_emb, data_idx, hop=2, class_mapping=None, to_undirected=False, process_label_func=None, adj=None, **kwargs):
         super().__init__(pyg_graph, process_label_func, **kwargs)
 
 
@@ -421,8 +421,54 @@ class GraphListDataset(GraphTextDataset):
         return prompt_edge
 
 
-class MassiveDataset(GraphTextDataset):
-    pass
+class MassiveDataset(GraphListDataset):
+    def __init__(self, graphs, class_embs, prompt_edge_emb, noi_node_emb, data_idx, process_label_func=None,
+                 **kwargs, ):
+        super().__init__(graphs, class_embs, prompt_edge_emb, data_idx, process_label_func, **kwargs, )
+        self.noi_node_emb = noi_node_emb
+
+    def make_prompt_node(self, feat, class_emb):
+        if self.no_class_node:
+            feat = torch.cat([feat, self.noi_node_emb], dim=0)
+        else:
+            feat = torch.cat([feat, self.noi_node_emb, class_emb], dim=0)
+        return feat
+
+    def make_f2n_edge(self, target_node_id, class_emb, n_feat_node):
+        prompt_edge = torch.tensor([list(range(n_feat_node)), [n_feat_node] * n_feat_node], dtype=torch.long, )
+        return prompt_edge
+
+    def make_n2f_edge(self, target_node_id, class_emb, n_feat_node):
+        prompt_edge = torch.tensor([[n_feat_node] * n_feat_node, list(range(n_feat_node))], dtype=torch.long, )
+        return prompt_edge
+
+    def make_n2c_edge(self, target_node_id, class_emb, n_feat_node):
+        prompt_edge = torch.tensor(
+            [[n_feat_node] * len(class_emb), [n_feat_node + i + 1 for i in range(len(class_emb))], ],
+            dtype=torch.long, )
+        return prompt_edge
+
+    def make_c2n_edge(self, target_node_id, class_emb, n_feat_node):
+        prompt_edge = torch.tensor(
+            [[n_feat_node + i + 1 for i in range(len(class_emb))], [n_feat_node] * len(class_emb), ],
+            dtype=torch.long, )
+        return prompt_edge
+
+    def make_feature_graph(self, index):
+        g = self.g[self.data_idx[index]]
+        edge_index = g.edge_index
+        label = g.y
+        # label_emb = self.class_emb(label).view(1, -1)
+        feat = g.node_text_feat
+        # edge_feat = g.edge_text_feat
+        edge_feat = None
+        e_type = torch.zeros(len(edge_index[0]), dtype=torch.long)
+        target_node_id = list(range(len(feat)))
+        label, emb, binary_rep = self.process_label(label)
+        return feat, edge_feat, edge_index, e_type, target_node_id, emb, label, binary_rep
+
+    
+
 
 
 class GraphListNopromptDataset(GraphListDataset):

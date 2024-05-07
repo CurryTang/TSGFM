@@ -8,10 +8,11 @@ import utils
 from data.KG.gen_data import KGOFADataset
 from data.chemmol.gen_data import MolOFADataset
 from data.single_graph.gen_data import SingleGraphOFADataset
+from data.mag240m.gen_data import SegmentDataset
 
 from ofa_datasets import (GraphListDataset, SubgraphDataset, MultiDataset, GraphListHierDataset, SubgraphHierDataset,
                           SubgraphLinkHierDataset, SubgraphKGHierDataset, SubgraphNopromptDataset,
-                          GraphListNopromptDataset, SubgraphNopromptLinkDataset, FewShotDataset)
+                          GraphListNopromptDataset, SubgraphNopromptLinkDataset, FewShotDataset, MassiveDataset)
 from fs_datamanager import FewShotDataManager, SimpleFSManager
 
 from gp.utils.utils import k_fold_ind, k_fold2_split
@@ -27,7 +28,7 @@ from ogb.nodeproppred import PygNodePropPredDataset
 name2dataset = {"arxiv": SingleGraphOFADataset, "arxivyear": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
                 'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset, "bookchild": SingleGraphOFADataset, "amazonratings": SingleGraphOFADataset, "bookhis": SingleGraphOFADataset, "elecomp": SingleGraphOFADataset, "elephoto": SingleGraphOFADataset, "sportsfit": SingleGraphOFADataset, 'products': SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, "bace": MolOFADataset, "bbbp": MolOFADataset, 
-                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset}
+                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset, 'mag240m': SegmentDataset}
 
 
 ########################################################################
@@ -135,6 +136,11 @@ def CiteHigh(dataset):
     split = {"train": train_mask.nonzero(as_tuple=True)[0],
              "valid": val_mask.nonzero(as_tuple=True)[0],
              "test": test_mask.nonzero(as_tuple=True)[0], }
+    return split
+
+def FullTrainSplitter(dataset):
+    text_g = dataset.data
+    split = {"train": torch.arange(len(text_g.y))}
     return split
 
 
@@ -334,6 +340,13 @@ def ConstructMolNopromptCls(dataset, split, split_name, to_bin_cls_func, **kwarg
                                     process_label_func=to_bin_cls_func, single_prompt_edge=True,
                                     walk_length=kwargs["walk_length"], )
 
+def ConstructSegmentCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, task_level, global_data, **kwargs):
+    return MassiveDataset(dataset, prompt_feats["class_node_text_feat"], prompt_feats["prompt_edge_text_feat"],
+                                prompt_feats["noi_node_text_feat"], split[split_name],
+                                process_label_func=to_bin_cls_func, prompt_edge_list=dataset.get_edge_list(task_level),
+                                **kwargs, )
+
+
 
 def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, task_level, **kwargs):
     original_idx = np.concatenate(split[split_name][1])
@@ -364,7 +377,7 @@ def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, g
 ####################################
 
 def keep_label(embs, label):
-    return label.long(), embs, Nones
+    return label.long(), embs, None
 
 def process_pth_label(embs, label):
     binary_rep = torch.zeros((1, len(embs)))

@@ -66,6 +66,13 @@ arxivyear: &arxivyear
   <<: *E2E-node
   dataset: arxivyear
 
+mag240m: &mag240m
+  <<: *E2E-node
+  dataset: mag240m
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+
 logic_arxiv:
   <<: *E2E-node
   dataset: logic_arxiv

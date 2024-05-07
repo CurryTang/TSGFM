@@ -4,6 +4,7 @@ from torch_geometric.utils import to_undirected, remove_self_loops, degree
 from graphllm.utils import MP
 import torch.nn.functional as F
 import torch
+
 def compute_message_passing(edge_index, x, hop=2):
     edge_index = to_undirected(edge_index)
     edge_index, _ = remove_self_loops(edge_index)

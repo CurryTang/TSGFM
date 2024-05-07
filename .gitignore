@@ -211,3 +211,6 @@ subgraph/*
 
 
 test.py
+
+elph_*
+sentence-transformers_*

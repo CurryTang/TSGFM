@@ -122,6 +122,13 @@ arxivyear: &arxivyear
   process_label_func: process_pth_label
   num_classes: 5
 
+mag240m: &mag240m
+  <<: *E2E-node
+  dataset_name: mag240m
+  dataset_splitter: FulltrainSplitter
+  process_label_func: process_pth_label
+  num_classes: 153
+
 link-eval-args: &link-eval-args
   remove_edge: False
   walk_length: null
