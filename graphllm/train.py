@@ -446,7 +446,7 @@ class LazySupervisedGraphDataset(Dataset):
         self.datas={}
         list_data_dict = []
         self.pretrained_embs={}
-        self.index={}
+        # self.index={}
         for d, dataset in enumerate(self.use_dataset):
             repeat=1
             if "." in dataset:
@@ -478,13 +478,13 @@ class LazySupervisedGraphDataset(Dataset):
             set_label_names(data, osp.join(data_args.data_saved_path, dataset, 'processed','categories.csv'))
             self.datas[dataset]=data
             data_dir=os.path.dirname(data_path)
-            pretrained_emb = self.load_pretrain_embedding_hop(data_dir, data_args.pretrained_embedding_type, data_args.use_hop, data.train_mask)
+            pretrained_emb = self.load_pretrain_embedding_hop(data_dir, data_args.pretrained_embedding_type, data_args.use_hop)
             data.x = data.node_text_feat
-            n = data.x.shape[0]
-            index = torch.full([n],fill_value=n+1, dtype=torch.long)
-            train_index = torch.arange(data.train_mask.sum())
-            index[data.train_mask] = train_index
-            self.index[dataset]=index
+            # n = data.x.shape[0]
+            # index = torch.full([n],fill_value=n+1, dtype=torch.long)
+            # train_index = torch.arange(data.train_mask.sum())
+            # index[data.train_mask] = train_index
+            # self.index[dataset]=index
             self.structure_emb = None
             self.pretrained_embs[dataset] = pretrained_emb
             self.use_task = data_args.use_task.split('-')
@@ -543,8 +543,8 @@ class LazySupervisedGraphDataset(Dataset):
         pretrained_emb = torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_x.pt"))
         return pretrained_emb
 
-    def load_pretrain_embedding_hop(self, data_dir, pretrained_embedding_type, hop, mask):
-        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(hop+1)]
+    def load_pretrain_embedding_hop(self, data_dir, pretrained_embedding_type, hop):
+        pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt")) for i in range(hop+1)]
         return pretrained_embs
 
 
@@ -593,7 +593,8 @@ class LazySupervisedGraphDataset(Dataset):
                 center_id = self.list_data_dict[i]['graph'][g][0]
                 self.list_data_dict[i]['graph'][g] = [center_id]*(self.use_hop+1)
             graph = torch.LongTensor(self.list_data_dict[i]['graph'])
-            center_id = self.index[self.list_data_dict[i]["dataset"]][graph[:, 0]]
+            # center_id = self.index[self.list_data_dict[i]["dataset"]][graph[:, 0]]
+            center_id = graph[:, 0]
             graph_emb = torch.stack([emb[center_id] for emb in self.pretrained_embs[self.list_data_dict[i]["dataset"]]], dim=1)
             data_dict['graph'] = graph
             data_dict['graph_emb'] = graph_emb
