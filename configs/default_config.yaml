@@ -40,3 +40,7 @@ max_nodes_per_hop: 100
 load_best: False
 gnn_load_path: none
 gnn_load_deepspeed: False
+plot_mode: "feature"
+sample_point_for_plot: 300
+plot_space: "original"
+node_centered: True

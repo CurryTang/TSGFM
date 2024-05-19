@@ -27,7 +27,7 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
                           'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics', 
                           'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link', 
-                          "arxiv-link", 'bookhis-link', 'bookchild-link', 'elephoto-link', 'elecomp-link', 'sportsfit-link', 'products-link']
+                          "arxiv-link", 'bookhis-link', 'bookchild-link', 'elephoto-link', 'elecomp-link', 'sportsfit-link', 'products-link', 'dblp', 'dblp-link']
     if dataset.endswith("-link"):
         dataset = dataset[:-5]
         link = True

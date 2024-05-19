@@ -1,2 +1,5 @@
-CUDA_VISIBLE_DEVICES=1 python3 run_cdm.py --override /egr/research-dselab/chenzh85/nips/MyOFA/eval_commerce_oneforall.yaml model adapool exp_name commerce_with_hete_adapool num_epochs 20
-CUDA_VISIBLE_DEVICES=1 python3 run_cdm.py --override /egr/research-dselab/chenzh85/nips/MyOFA/eval_commerce_oneforall.yaml model noparam exp_name commerce_with_hete_noparam num_epochs 20
+for d in "bookhis" "bookchild" "elecomp" "elephoto" "sportsfit" "products"
+do 
+    CUDA_VISIBLE_DEVICES=7 python3 run_cdm.py task_names $d d_min_ratio 1 d_multiple 1 exp_name "single_${d}" model ofamlp
+    CUDA_VISIBLE_DEVICES=7 python3 run_cdm.py task_names $d d_min_ratio 1 d_multiple 1 exp_name "single_${d}" model noparam
+done 

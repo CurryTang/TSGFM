@@ -10,6 +10,23 @@ E2E-node: &E2E-node
     - stage: test
       split_name: train
 
+pretrain: &pretrain
+  eval_pool_mode: mean
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+    - stage: test
+      split_name: train
+
+arxivall: &arxivall
+  <<: *pretrain
+  dataset: arxivall
+
+productsall: &productsall
+  <<: *pretrain
+  dataset: productsall
+
+
 arxiv: &arxiv
   <<: *E2E-node
   dataset: arxiv
@@ -49,6 +66,26 @@ pubmed_node: &pubmed_node
 citeseer_node: &citeseer_node
   <<: *E2E-node
   dataset: citeseer_node
+
+cora_node_high: &cora_node_high
+  <<: *E2E-node
+  dataset: cora_node_high
+
+citeseer_node_high: &citeseer_node_high
+  <<: *E2E-node
+  dataset: citeseer_node_high
+
+pubmed_node_high: &pubmed_node_high
+  <<: *E2E-node
+  dataset: pubmed_node_high
+
+dblp_node: &dblp_node
+  <<: *E2E-node
+  dataset: dblp_node
+
+dblp_node_high: &dblp_node_high
+  <<: *E2E-node
+  dataset: dblp_node_high
 
 wikics: &wikics
   <<: *E2E-node
@@ -184,6 +221,25 @@ citeseer_link: &citeseer_link
       split_name: train
       dataset: citeseer_link
 
+dblp_link: &dblp_link
+  <<: *E2E-link
+  dataset: dblp_link
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: dblp_link
+    - stage: valid
+      split_name: valid
+      dataset: dblp_link_eval
+    - stage: test
+      split_name: test
+      dataset: dblp_link_eval
+    - stage: test
+      split_name: train
+      dataset: dblp_link
+
+
+
 FB15K237: &FB15K237
   <<: *E2E-link
   eval_set_constructs:
@@ -236,15 +292,15 @@ chemblpre: &chemblpre
     - stage: train
       split_name: train
       dataset: chemblpre
-    - stage: valid
-      split_name: valid
-      dataset: chempcba_eval
-    - stage: valid
-      split_name: valid
-      dataset: chemhiv
-    - stage: test
-      split_name: test
-      dataset: chemhiv
+    # - stage: valid
+    #   split_name: valid
+    #   dataset: chempcba_eval
+    # - stage: valid
+    #   split_name: valid
+    #   dataset: chemhiv
+    # - stage: test
+    #   split_name: test
+    #   dataset: chemhiv
 
 chempcba: &chempcba
   <<: *E2E-graph

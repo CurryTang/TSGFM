@@ -44,6 +44,24 @@ if __name__ == "__main__":
                 'drop_edge_rate': {"values": [0.0, 0.5]},
             },
         }
+    elif args.method == 'dgi':
+        sweep_configuration = {
+            "method": "random",
+            "metric": {"goal": "maximize", "name": "avg_test"},
+            "parameters": {
+                "num_hidden": {"values": [128, 256, 512, 1024]},
+                "activation": {"values": ["relu", "prelu", "elu"]},
+                "in_drop": {"values": [0.0, 0.2, 0.5]},
+                "attn_drop": {"values": [0.0, 0.2, 0.5]},
+                "lr": {"values": [0.001, 0.005, 0.01]},
+                "weight_decay": {"values": [0.0, 0.001, 5e-4, 1e-5]},
+                "num_layers": {"values": [2, 3]},
+                "scheduler": {"values": [True, False]},
+                "norm": {"values": ["layernorm", "batchnorm", None]},
+                "lrtype": {"values": ["lambda", "cosine"]},
+                "residual": {"values": [True, False]}
+            },
+        }
     elif args.mode == 'subgcon':
         sweep_configuration = {
             "method": "random",

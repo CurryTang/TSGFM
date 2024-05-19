@@ -87,6 +87,11 @@ class SentenceEncoder:
             self.model = model.to(self.device)
             self.tokenizer = tokenizer
             self.encode = self.e5_encode
+        
+        elif self.name == 'e5_mistral':
+            self.model = SentenceTransformer("intfloat/e5-mistral-7b-instruct", device=self.device, cache_folder=self.root)
+            self.model.max_seq_length = 4096
+            self.encode = self.prompt_ST_encode
 
         elif self.name == "roberta":
             self.model = SentenceTransformer("sentence-transformers/roberta-base-nli-stsb-mean-tokens",
@@ -113,6 +118,17 @@ class SentenceEncoder:
                 convert_to_tensor=to_tensor, convert_to_numpy=not to_tensor, )
         return embeddings
     
+    def prompt_ST_encode(self, texts, to_tensor=True):
+        if self.multi_gpu:
+            # Start the multi-process pool on all available CUDA devices
+            pool = self.model.start_multi_process_pool()
+            embeddings = self.model.encode_multi_process(texts, pool=pool, batch_size=self.batch_size, )
+            embeddings = torch.from_numpy(embeddings)
+        else:
+            embeddings = self.model.encode(texts, batch_size=self.batch_size, show_progress_bar=True,
+                convert_to_tensor=to_tensor, convert_to_numpy=not to_tensor, prompt = "encode the text attributes of this graph node")
+        return embeddings
+    
     def random_encode(self, texts, to_tensor=True):
         embeddings = torch.normal(0, 1, size=(len(texts), ENCODER_DIM_DICT['random']))
         return embeddings
@@ -129,6 +145,8 @@ class SentenceEncoder:
         with torch.no_grad():
             for start_index in trange(0, len(texts), self.batch_size, desc="Batches", disable=False, ):
                 sentences_batch = texts[start_index: start_index + self.batch_size]
+                if not isinstance(sentences_batch, list):
+                    sentences_batch = sentences_batch.tolist()
                 input_ids = self.tokenizer(sentences_batch, return_tensors="pt", padding="longest", truncation=True,
                                            max_length=500).input_ids.to(self.device)
                 transformer_output = self.model(input_ids, return_dict=True, output_hidden_states=True)["hidden_states"]
@@ -152,6 +170,8 @@ class SentenceEncoder:
         with torch.no_grad():
             for start_index in trange(0, len(texts), self.batch_size, desc="Batches", disable=False, ):
                 sentences_batch = texts[start_index: start_index + self.batch_size]
+                if not isinstance(sentences_batch, list):
+                    sentences_batch = sentences_batch.tolist()
                 batch_dict = self.tokenizer(sentences_batch, padding="longest", truncation=True, return_tensors='pt')
                 for item, value in batch_dict.items():
                     batch_dict[item] = value.to(self.device)

@@ -214,3 +214,6 @@ test.py
 
 elph_*
 sentence-transformers_*
+
+*.png 
+*.pdf

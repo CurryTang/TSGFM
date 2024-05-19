@@ -31,6 +31,45 @@ from utils import (
 )
 
 from task_constructor import UnifiedTaskConstructor
+from plotutils.analysis import visualize_umap_datasets, average_feature_similarity_heatmap
+from torch_geometric.utils import to_undirected, remove_self_loops, degree
+from graphllm.utils import MP
+
+@torch.no_grad()
+def info_from_data(ofa_g, sample_x = 100, do_mp = False):
+    """
+    Extracts the information from the data dictionary and returns it as a tuple.
+
+    Args:
+        ofa_g: The data dictionary.
+    """
+    node_features = ofa_g.g.node_text_feat
+    class_emb = ofa_g.class_emb
+
+    if do_mp:
+        edge_index = ofa_g.g.edge_index
+        node_features = compute_message_passing(edge_index, node_features).cpu()
+
+    number_of_rows = node_features.shape[0]
+    indices = torch.randperm(number_of_rows)[:sample_x]
+    node_features = node_features[indices]
+
+    return node_features, class_emb
+
+
+
+def compute_message_passing(edge_index, x, hop=2):
+    edge_index = to_undirected(edge_index)
+    edge_index, _ = remove_self_loops(edge_index)
+    row, col = edge_index
+    deg = degree(col, x.size(0), dtype=x.dtype)
+    deg_inv_sqrt = deg.pow(-0.5)
+    deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
+    norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+    mp = MP()
+    for _ in range(hop):
+        x = mp.partition_propagate(edge_index, x=x, norm=norm, chunk_size=200, cuda=True)
+    return x
 
 
 def main(params):
@@ -88,7 +127,31 @@ def main(params):
         data_multiple, min_ratio, train_data
     )
 
-    all_datasets = text_dataset['train'].data.datas[0].g
+    all_datasets = text_dataset['train'].data.datas
+
+    all_x = []
+    all_y = [] 
+
+    for graph in all_datasets:
+        do_mp = False if params.plot_space == 'original' else True
+        sampled_features, class_emb = info_from_data(graph, sample_x=params.sample_point_for_plot, do_mp=do_mp)
+
+        all_x.append(sampled_features)
+        all_y.append(class_emb)
+    
+
+
+    if params.plot_mode == 'feature':
+        visualize_umap_datasets(all_x, all_y, task_names, mode='feature' + params.plot_space)
+    elif params.plot_mode == 'label':
+        visualize_umap_datasets(all_y, all_y, task_names, mode='label' + params.plot_space)
+    elif params.plot_mode == 'heatx':
+        average_feature_similarity_heatmap(all_x, task_names, mode='feature' + params.plot_space)
+    elif params.plot_mode == 'heaty':
+        average_feature_similarity_heatmap(all_y, task_names, mode='label' + params.plot_space)
+    
+
+
     
 
 

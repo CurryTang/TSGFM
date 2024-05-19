@@ -5,9 +5,7 @@ from torch_sparse import spspmm, spmm
 from scipy.spatial.distance import cdist
 from torch_geometric.utils import remove_self_loops
 from torch_geometric.utils import scatter, mask_to_index, to_undirected, remove_self_loops, degree
-from dgl.sampling import sample_neighbors
 from collections import deque
-import dgl
 import torch.nn.functional as F
 import os.path as osp
 import os
@@ -40,7 +38,6 @@ def tokenizer_graph_token(prompt, tokenizer, graph_token_index=GRAPH_TOKEN_INDEX
     if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
         offset = 1
         input_ids.append(prompt_chunks[0][0])
-
     for x in insert_separator(prompt_chunks, [graph_token_index] * (offset + 1)):
         input_ids.extend(x[offset:])
 
@@ -113,6 +110,33 @@ def get_feature_similarity(edge_index, features, k = 0):
         aggr_features = spmm(edge_index, value, num_nodes, num_nodes, features)
         return _feature_similarity(aggr_features.cpu())
 
+class MP(MessagePassing):
+    def __init__(self):
+        super().__init__(aggr='add')  # "Add" aggregation (Step 5).
+
+    def partition_propagate(self, data_edge_index, x, norm, select_idx=None, chunk_size=800, cuda=False):
+        if select_idx is None:
+            n = x.shape[0]
+            select_idx = torch.arange(n)
+        else:
+            n = select_idx.shape[0]
+
+        os=[]
+        for i in trange(0, n, chunk_size):
+            key=select_idx[i:i+chunk_size]
+            subset, edge_index, mapping, edge_mask = k_hop_subgraph(key, 1, data_edge_index, relabel_nodes=True)
+            if cuda:
+                o =  self.propagate(edge_index.cuda(), x=x[subset].cuda(), norm=norm[edge_mask].cuda())
+            else:
+                o = self.propagate(edge_index, x=x[subset], norm=norm[edge_mask])
+            os.append(o[mapping])
+
+        return torch.cat(os, dim=0)
+
+
+    def message(self, x_j, norm):
+        return norm.view(-1, 1) * x_j
+
 def dump_jsonl(data, json_filepath):
     path_name = osp.dirname(json_filepath)
     os.makedirs(path_name, exist_ok=True)
@@ -126,8 +150,8 @@ def classification_prompt(category = 'paper', label_names = ['A', 'B'], gt = 0):
     num_of_classes = len(label_names)
     label_str = ", ".join(label_names)
     prompt = f"""
-        Given a node-centered graph: <graph>, each node represents a {{DEFAULT_GRAPH_TOKEN}}, 
-        we need to classify the center node into {num_of_classes}: {label_str}, please tell me which class the center node belongs to? 
+        Given a node-centered graph: <graph>, each node represents a {category}, 
+        we need to classify the center node into {num_of_classes} classes: {label_str}, please tell me which class the center node belongs to? 
     """ 
     human_conv = {
         "from": "human", 
@@ -140,7 +164,7 @@ def classification_prompt(category = 'paper', label_names = ['A', 'B'], gt = 0):
     return human_conv, gpt_conv
 
 def link_prediction_prompt(gt = 0):
-    prompt = "Given two node-centered subgraphs: {DEFAULT_GRAPH_TOKEN} and {DEFAULT_GRAPH_TOKEN}, we need to predict whether these two nodes connect with each other. Please tell me whether two center nodes in the subgraphs should connect to each other."
+    prompt = f"Given two node-centered subgraphs: {DEFAULT_GRAPH_TOKEN} and {DEFAULT_GRAPH_TOKEN}, we need to predict whether these two nodes connect with each other. Please tell me whether two center nodes in the subgraphs should connect to each other."
 
     human_conv = {
         "from": "human", 
@@ -156,25 +180,45 @@ def link_prediction_prompt(gt = 0):
 
 
 def get_mask(data, i = 0):
+
     """
+
         Given different types of mask format, return the first seed
+
     """
+
     if hasattr(data, 'train_mask'):
+
         if isinstance(data.train_mask, torch.Tensor):
+
             if data.train_mask.dim() == 1:
+
                 return data.train_mask, data.val_mask, data.test_mask
+
             else:
+
                 ## only for wikics
+
                 return data.train_mask[:, i], data.val_mask[:, i], data.test_mask
+
         else:
+
             if i < len(data.train_mask):
+
                 return data.train_mask[i], data.val_mask[i], data.test_mask[i]
+
             else:
+
                 return data.train_mask[0], data.val_mask[0], data.test_mask[0]
+
     elif hasattr(data, 'train_masks'):
+
         if i < len(data.train_masks):
+
             return data.train_masks[i], data.val_masks[i], data.test_masks[i]
+
         else:
+
             return data.train_masks[0], data.val_masks[0], data.test_masks[0]
 
 
@@ -339,9 +383,55 @@ def generate_multi_hop_x(data, x, full_path, emb="sbert"):
     for i in range(4):
         x = mp.partition_propagate(edge_index, x=x, norm=norm, chunk_size=200, cuda=True)
         torch.save(x.cpu(), osp.join(full_path, f"{emb}_{i + 1}hop_x.pt"))
-        
+
+def generate_notestlink(data, data_dir):
+    print(data)
+    useless_keys = ['val_id', 'test_id', 'title', 'abs', 'train_id', 'label_texts', 'raw_texts', 'keywords',
+                    'category_names', 'label_names']
+    for k in useless_keys:
+        if k in data:
+            data[k] = None
+    useful_keys = ['train_mask', 'x', 'val_mask', 'edge_index', 'test_mask', 'y']
+    for k in useful_keys:
+        if k in data:
+            data[k] = data[k].contiguous()
+    link_test_path = os.path.join(data_dir, "edge_sampled_2_10_only_test.jsonl")
+    with open(link_test_path, 'r') as f:
+        link_test_lines = f.readlines()
+        link_test_lines = [json.loads(line) for line in link_test_lines]
+        test_links = [tuple(line['id']) for line in link_test_lines if line['gt'] == 1]
+    links = set(test_links)
+    new_edge_index = []
+    old_edge_index = data.edge_index.numpy().tolist()
+    remove=1
+    for i in trange(len(old_edge_index[0])):
+        if (old_edge_index[0][i], old_edge_index[1][i]) in links or (old_edge_index[1][i], old_edge_index[0][i]) in links:
+            remove+=1
+            continue
+        else:
+            new_edge_index.append([old_edge_index[0][i], old_edge_index[1][i]])
+
+    new_edge_index = torch.LongTensor(new_edge_index).t()
+    data.edge_index = new_edge_index.contiguous()
+    data.edge_index = to_undirected(data.edge_index)
+    torch.save(data, osp.join(data_dir, f"processed_data_link_notest.pt"))
+    return osp.join(data_dir, f"processed_data_link_notest.pt")
 
 
+def generate_multi_hop_x_notestlink(data_obj, dataset, cache_path):
+    data = data_obj
+    x = torch.load(osp.join(cache_path, f"{dataset}/sbert_0hop_x.pt"))
+    edge_index = data.edge_index
+    row, col = data.edge_index
+    deg = degree(col, x.size(0), dtype=x.dtype)
+    deg_inv_sqrt = deg.pow(-0.5)
+    deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
+    norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+    edge_index = data_obj.edge_index
+    mp = MP()
+    for i in range(4):
+        x = mp.propagate(edge_index, x=x, norm=norm)
+        torch.save(x.cpu(), osp.join(cache_path, dataset, "processed", f"sbert_{i + 1}hop_x_notestlink.pt"))
 
 
 if __name__ == '__main__':

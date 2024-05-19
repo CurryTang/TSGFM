@@ -8,7 +8,6 @@ import numpy as np
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 from difflib import SequenceMatcher
-import pandas as pd
 
 def similarity(str1, str2):
     return SequenceMatcher(None, str1, str2).ratio()
@@ -36,21 +35,13 @@ def find_closest_label(text, labels):
 
   return closest_label
 
-def set_label_names(data, label_csv_path):
-    label_pd = pd.read_csv(label_csv_path)
-    if hasattr(data, 'label_names'):
-        return data 
-    label_names = label_pd['name'].tolist()
-    data.label_names = label_names
-    return data
 
 
-def eval_nc(res_path, data_path, args):
+def eval_nc(res_path, data_path):
     data=torch.load(data_path)[0]
-    set_label_names(data, osp.join(args.data_saved_path, args.dataset, 'processed','categories.csv'))
     labels=data.label_names
     labels = [x.lower().strip() for x in labels]
-    ys=data.y.view(-1).numpy().tolist()
+    ys=data.y.numpy().tolist()
 
     all_sample=0
     overall_correct=0
@@ -142,9 +133,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     data_path = osp.join(args.data_saved_path, args.dataset, 'processed', "geometric_data_processed.pt")
-    
+
     if args.task == 'nc':
-        eval_nc(args.res_path, data_path, args)
+        eval_nc(args.res_path, data_path)
     elif args.task == 'lp':
         eval_lprank(args.res_path) 
     else:

@@ -2,6 +2,7 @@
 
 dataset=${1:-"arxiv"}
 task=${2:-"nc"}
+scenario=${3:-"True"}
 max_len=4096
 sample_size=10
 model="mistral"
@@ -13,8 +14,8 @@ report_to="none"
 use_hop=4
 template="HO"
 projector_type="linear"
-prefix=llaga-mistral-7b-hf-${emb}-${use_hop}-hop-token-${projector_type}-${dataset}-${task}-projector
-model_base="../Mistral-7B-v0.1"
+prefix="llaga-mistral-7b-hf-${emb}-${use_hop}-hop-token-${projector_type}-${dataset}-${task}-projector"
+model_base="/localscratch/chenzh85/models--mistralai--Mistral-7B-v0.1/snapshots/26bca36bde8333b5d7f72e9ed20ccda6a618af24"
 mode="mistral_instruct"
 
 ## determine parameters based on your gpu types
@@ -31,6 +32,16 @@ elif [[ $gpu_info == *"A100"* ]]; then
     fp16=False
     bf16=True
     tf32=True
+elif [[ $gpu_info == *"A6000"* ]]; then
+    echo "Tesla A6000 detected (GPU 0)"
+    fp16=False
+    bf16=True
+    tf32=True
+elif [[ $gpu_info == *"8000"* ]]; then
+    echo "RTX 8000 detected (GPU 0)"
+    fp16=True
+    bf16=False
+    tf32=False
 else
     echo "Neither Tesla V100 nor A100 detected (GPU 0)"
     exit
@@ -39,7 +50,7 @@ fi
 
 echo "PREFIX:  ${prefix}"
 
-WANDB_MODE=offline python3.8 graphllm.py \
+WANDB_MODE=offline python3 graphllm.py \
 --model_name_or_path ${model_base} \
 --version ${mode} \
 --cache_dir  ${cache_dir} \
@@ -72,4 +83,5 @@ WANDB_MODE=offline python3.8 graphllm.py \
 --use_task ${task} \
 --use_dataset ${dataset} \
 --template ${template} \
---data_saved_path "./cache_data_minilm"
+--data_saved_path "./cache_data_minilm" \
+--node_centered "${scenario}" 

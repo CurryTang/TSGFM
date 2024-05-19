@@ -621,7 +621,7 @@ class MultiDataset(DatasetWithCollate):
     """
 
     def __init__(self, datas, data_val_index=None, dataset_multiple=1, window_size=3, patience=3, min_ratio=0.1,
-                 mode=None, ):
+                 mode=None):
         self.datas = datas
         self.sizes = np.array([len(d) for d in datas])
         self.performance_record = []
@@ -644,7 +644,6 @@ class MultiDataset(DatasetWithCollate):
         self.mode = mode
         if mode is not None:
             self.mode = np.array([1 if m == "max" else -1 for m in self.mode])
-        # self.walk_length = walk_length
         self.compute_sizes()
 
     def compute_sizes(self):

@@ -7,13 +7,13 @@ import numpy as np
 from torch_geometric.datasets import Planetoid
 import torch_geometric.transforms as T
 from torch_geometric.nn import global_mean_pool
-from subgcon.efficient_dataset import NodeSubgraphDataset, LinkSubgraphDataset, GraphSubgraphDataset
-from subgcon.models import SugbCon, Scorer, Pool
+# from subgcon.models import SugbCon, Scorer, Pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
-from graphmae.models import build_model, TaskHeadModel
+from graphmae.models import build_model, TaskHeadModel, build_model_backbone
 from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test
 from graphmae.models.gcn import GNN_node
+from subgcon.ssl import DGIEncoder, dgi_train_step
 import logging
 import os.path as osp
 from tqdm import tqdm
@@ -21,8 +21,10 @@ from graphmae.config import DATASET
 from ogb.linkproppred.evaluate import Evaluator
 import pytorch_warmup as warmup
 from torch_geometric.nn.models import GCN
+from GCL.models import SingleBranchContrast
+import GCL.losses as L
 
-def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None, warmup_scheduler = None):
+def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None, warmup_scheduler = None, contrast_model = None):
     # Model training
     model.train()
     optimizer.zero_grad()
@@ -32,11 +34,13 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
         if batch.x.dim() == 1 and args.embed_mode == 'llm':
             batch.x = batch.node_text_feat
             batch.xe = batch.edge_text_feat
-        if model_type == 'subgcon':
-            index = batch.ptr[:-1]
-            edge_feat = batch.xe if hasattr(batch, 'xe') else None
-            z, summary = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device), edge_feat)
-            loss = model.loss(z, summary)
+        if model_type == 'dgi':
+            batch = batch.to(device)
+            loss = dgi_train_step(model, contrast_model, batch, optimizer) 
+        elif model_type == 'gcc':
+            pass 
+        elif model_type == 'bgrl':
+            pass
         elif model_type == 'graphmae':
             loss, loss_item = model(batch.x.to(device), batch.edge_index.to(device))
         elif model_type == 'cotrain':
@@ -65,12 +69,12 @@ def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln
             batch.x = batch.node_text_feat
             batch.xe = batch.edge_text_feat
         index = batch.ptr[:-1]
-        if modeln == 'subgcon':
-            edge_feat = batch.xe if hasattr(batch, 'xe') else None
-            if edge_feat is not None:
-                node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device), edge_feat.to(device))
+        if modeln == 'dgi':
+            node, graph, _ = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device))
+            if size > 1:
+                node = node[index]
             else:
-                node, graph = model(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device), index.to(device))
+                node = node
         elif modeln == 'graphmae':
             # import ipdb; ipdb.set_trace()
             out = model.embed(batch.x.to(device), batch.edge_index.to(device))
@@ -148,22 +152,22 @@ def main(args):
     max_epochs = args.max_epoch
     use_scheduler = args.scheduler
     ## select method
-    if args.method == 'subgcon':
-        if args.backbone == 'gcn_node':
-            model = SugbCon(
-                hidden_channels=args.num_hidden, encoder=GCN(feature_dim, args.num_hidden, args.num_layers, args.num_hidden, args.in_drop),
-                pool=Pool(in_channels=args.num_hidden),
-                scorer=Scorer(args.num_hidden)).to(device)
-        elif args.backbone == 'gcn_graph':
-            model = SugbCon(
-                hidden_channels=args.num_hidden, encoder=GNN_node(args.num_layers, args.num_hidden, args.in_drop, residual=args.residual, gnn_type=args.encoder, embed_mode=args.embed_mode),pool=Pool(in_channels=args.num_hidden),
-                scorer=Scorer(args.num_hidden)).to(device)
-        ## subgcon only supports subgraph
-        args.split_mode = 'subgraph'
-    elif args.method == 'graphmae':
+    if args.method == 'graphmae':
         model = build_model(args).to(device)
+        contrast_model = None
+    elif args.method == 'dgi':
+        model = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
+        model = DGIEncoder(model, args.num_hidden).to(device)
+        contrast_model = SingleBranchContrast(
+            loss=L.JSD(), mode='G2L'
+        ).to(device)
+    elif args.method == 'bgrl':
+        model = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
+    elif args.method == 'gcc':
+        model = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
     elif args.method == 'cotrain':
         model = build_model(args).to(device)
+        contrast_model = None
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -198,14 +202,14 @@ def main(args):
     for e in range(max_epochs):
         ## pre-train stage
         for i, G in enumerate(datas):
-            train_loader = G.search(batch_size = batch_size, shuffle = True, time='train')
-            loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, warmup_scheduler=warmup_scheduler)
+            train_loader = G.search(batch_size = batch_size, shuffle = True, time='train', infmode='cpu' if args.cpuinf else 'gpu')
+            loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, warmup_scheduler=warmup_scheduler, contrast_model = contrast_model)
             logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
         ## evaluation part
         eval_val = []
         eval_test = []
         for i, G in enumerate(datas):
-            test_loader = G.search(batch_size = batch_size, shuffle = False, time='test')
+            test_loader = G.search(batch_size = batch_size, shuffle = False, time='test', infmode='cpu' if args.cpuinf else 'gpu')
 
             val_res, test_res = test(model, G, test_loader, args, device, level = DATASET[args.pre_train_datasets[i]]['level'])
             eval_val.append(val_res)

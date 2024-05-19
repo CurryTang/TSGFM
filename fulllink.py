@@ -286,7 +286,7 @@ def train_over_multiple_datasets(model, predictor, datasets, evaluator, args, de
 
 def main():
     args = build_args()
-
+    print(args)
     device = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
     device = torch.device(device)
 

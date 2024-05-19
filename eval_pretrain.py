@@ -14,6 +14,10 @@ from graphllm.utils import classification_prompt, link_prediction_prompt
 from torch_geometric.utils import k_hop_subgraph, degree, remove_self_loops, add_self_loops
 from torch_geometric.nn import MessagePassing
 import math
+import pandas as pd
+
+import warnings
+warnings.filterwarnings("ignore")
 
 
 class MP(MessagePassing):
@@ -30,7 +34,7 @@ def split_list(lst, n):
 
 
 def load_pretrain_embedding_hop(data_dir, pretrained_embedding_type, hop, mask):
-    pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt"))[mask] for i in range(hop+1)]
+    pretrained_embs = [torch.load(os.path.join(data_dir, f"{pretrained_embedding_type}_{i}hop_x.pt")) for i in range(hop+1)]
     return pretrained_embs
 
 
@@ -51,6 +55,8 @@ def eval_model(args):
     print(f"Loaded from {model_path}. Model Base: {args.model_base}")
     tokenizer, model, context_len = load_pretrained_model(model_path, args.model_base, model_name,
                                                           cache_dir=args.cache_dir)
+    if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
     model = model.to(torch.float16).cuda()
     # data_dir=os.path.expanduser(args.data_dir)
     data_path = osp.join(args.data_saved_path, args.dataset, 'processed', "geometric_data_processed.pt")
@@ -63,7 +69,7 @@ def eval_model(args):
         raise ValueError
 
     data = torch.load(data_path)[0]
-    if hasattr(data, "train_masks"):
+    if hasattr(data, "train_masks") and 'citeseer' not in args.dataset:
         data.train_mask = data.train_masks[0]
         data.val_mask = data.val_masks[0]
         data.test_mask = data.test_masks[0]
@@ -71,12 +77,12 @@ def eval_model(args):
         del data.train_masks
         del data.val_masks
         del data.test_masks
-    elif dataset == 'arxiv':
-        arxiv_mask = torch.load(osp.join(data_args.data_saved_path, dataset, 'processed', 'arxiv_mask.pt'))
+    elif args.dataset == 'arxiv':
+        arxiv_mask = torch.load(osp.join(args.data_saved_path, args.dataset, 'processed', 'arxiv_mask.pt'))
         data.train_mask = arxiv_mask['train']
         data.val_mask = arxiv_mask['valid']
         data.test_mask = arxiv_mask['test']
-    set_label_names(data, osp.join(data_args.data_saved_path, dataset, 'processed','categories.csv'))
+    set_label_names(data, osp.join(args.data_saved_path, args.dataset, 'processed','categories.csv'))
     print(f"Load from {prompt_file}\n")
     lines = open(prompt_file, "r").readlines()
 
@@ -89,7 +95,7 @@ def eval_model(args):
 
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
-    if "tmp" not in args.answers_file and os.path.exists(answers_file):
+    if "tmp" not in args.answers_file and os.path.exists(answers_file) and args.start == -1 and args.end == -1:
         line_number = len(open(answers_file, 'r').readlines())
         print(f"{args.answers_file} already exists! it has {line_number} lines!!")
         if line_number >= len(lines):
@@ -104,22 +110,11 @@ def eval_model(args):
     index = None
     n = data.num_nodes
     if args.task == "lp":
-        pretrained_emb = load_pretrain_embedding_hop(data_dir, args.pretrained_embedding_type, args.use_hop)[0]
+        ## implement later
+        pass 
     else:
         mask = torch.full([n], fill_value=False, dtype=torch.bool)
-        for q in questions:
-            idx = q["id"]
-            if "lp" in  args.task:
-                assert len(idx) == 2
-                mask[idx[0]] = True
-                mask[idx[1]] = True
-            elif args.task  in ["nc", "nd", "nctext"]:
-                assert isinstance(idx, int)
-                mask[idx] = True
-        pretrained_emb = load_pretrain_embedding_hop(data_dir, args.pretrained_embedding_type, args.use_hop)
-        index = torch.full([n], fill_value=n + 1, dtype=torch.long)
-        test_index = torch.arange(mask.sum())
-        index[mask] = test_index
+        pretrained_emb = load_pretrain_embedding_hop(data_dir, args.pretrained_embedding_type, args.use_hop, mask)
     structure_emb = None
 
     for line in tqdm(questions):
@@ -132,7 +127,8 @@ def eval_model(args):
         line['conversations'] = []
         line['conversations'].append(human_conv)
         line['conversations'].append(gpt_conv)
-        line['conversations'][0]['value'] = prompt
+        if args.task == 'lp':
+            line['conversations'][0]['value'] = prompt
         qs = line["conversations"][0]['value']
         cur_prompt = qs
         conv = conv_templates[args.conv_mode].copy()
@@ -179,7 +175,7 @@ def eval_model(args):
                 line['graph'][g] = [center_id]*(args.use_hop+1)
             graph = torch.LongTensor(line['graph'])
             center_id = graph[:, 0]
-            graph_emb = torch.stack([emb[index[center_id]] for emb in pretrained_emb], dim=1)
+            graph_emb = torch.stack([emb[center_id] for emb in pretrained_emb], dim=1)
 
 
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2

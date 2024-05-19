@@ -5,21 +5,21 @@ lr: 0.001
 num_layers: 3
 JK : "none"
 task_names:
-  - "citeseer_node"
-  - "cora_node"
-  - "pubmed_node"
+  - "citeseer_node_high"
+  - "cora_node_high"
   - "arxiv"
+  - "arxiv23"
 
 
 d_multiple:
-  - 2
-  - 2
-  - 2.5
-  - 0.7
+  - 1
+  - 1
+  - 1
+  - 1
 
 
 d_min_ratio:
   - 1
   - 1
-  - 2
-  - 0.2
+  - 1
+  - 1

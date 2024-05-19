@@ -20,7 +20,7 @@ from gp.lightning.metric import HitsAtK
 from types import SimpleNamespace
 from lightning_model import GraphPredLightning
 from models.model import BinGraphModel, BinGraphAttModel, MultiHeadModel
-from models.model import PyGRGCNEdge, OFAMLP, AdaPoolClassModel, PyGSGC
+from models.model import PyGRGCNEdge, OFAMLP, AdaPoolClassModel, PyGSGC, AdaPoolClassNoFeatModel
 
 from torchmetrics import AUROC, Accuracy
 from utils import (
@@ -32,6 +32,20 @@ from utils import (
 
 from task_constructor import UnifiedTaskConstructor
 
+def replace_walk_length_values(data, val):
+  """
+  Replaces the value of keys named "walk length" with 10 recursively in a hierarchical dictionary
+  (modifies the dictionary in-place).
+
+  Args:
+      data: The hierarchical dictionary to be modified.
+  """
+  if isinstance(data, dict):
+    for key, value in data.items():
+      if key == "walk_length":
+        data[key] = val  # Modify the value in place
+      else:
+        replace_walk_length_values(value, val) 
 
 def main(params):
     encoder = SentenceEncoder(params.llm_name, root="/localscratch/chenzh85", batch_size=params.llm_b_size)
@@ -39,7 +53,8 @@ def main(params):
         os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
     )
     data_config_lookup = load_yaml(os.path.join(os.path.dirname(__file__), "configs", "data_config.yaml"))
-
+    if params.rwpe is not None:
+        replace_walk_length_values(data_config_lookup, params.rwpe)
     if isinstance(params.task_names, str):
         task_names = [a.strip() for a in params.task_names.split(",")]
     else:
@@ -57,6 +72,7 @@ def main(params):
         root=root,
         batch_size=params.batch_size,
         sample_size=params.train_sample_size,
+        node_centered=params.node_centered
     )
     val_task_index_lst, val_pool_mode = tasks.construct_exp()
     # remove llm model
@@ -92,6 +108,7 @@ def main(params):
     params.datamodule = DataModule(
         text_dataset, num_workers=params.num_workers
     )
+
 
 
     eval_data = text_dataset["val"] + text_dataset["test"]
@@ -156,6 +173,16 @@ def main(params):
             JK="last",
         )
         model = AdaPoolClassModel(gnn, in_dim, out_dim, 1)
+    elif params.model == 'adapoolnofeat':
+        gnn = PyGRGCNEdge(
+            params.num_layers,
+            5,
+            out_dim,
+            out_dim,
+            drop_ratio=params.dropout,
+            JK="last",
+        )
+        model = AdaPoolClassNoFeatModel(gnn, in_dim, out_dim, 1)
     elif params.model == 'mhead':
         gnn = PyGRGCNEdge(
             params.num_layers,
@@ -187,8 +214,8 @@ def main(params):
     exp_config.test_state_name = test_state
 
     pred_model = GraphPredLightning(exp_config, model, metrics)
-    if params.gnn_load_path is not None:
-        pred_model.load_from_checkpoint(params.gnn_load_path)
+    if params.gnn_load_path != "none":
+        pred_model = GraphPredLightning.load_from_checkpoint(params.gnn_load_path, model=model, config=exp_config, metrics=metrics)
 
     wandb_logger = WandbLogger(
         project=params.log_project,

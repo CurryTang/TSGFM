@@ -8,7 +8,7 @@ from gp.nn.layer.pyg import RGCNEdgeConv, RGATEdgeConv
 from torch_geometric.nn.pool import global_add_pool
 from torch_geometric.nn.conv import SGConv
 from torch_geometric.transforms.add_positional_encoding import AddRandomWalkPE
-
+from torch_geometric.utils import degree
 
 class TextClassModel(torch.nn.Module):
     def __init__(self, model, outdim, task_dim, emb=None):
@@ -78,6 +78,42 @@ class SingleHeadAtt(torch.nn.Module):
         return context, attn
 
 
+class AdaPoolClassNoFeatModel(torch.nn.Module):
+    def __init__(self, model, indim, outdim, task_dim, max_degree = 256, emb=None):
+        super().__init__()
+        self.model = model
+        self.in_proj = nn.Linear(indim * 2, outdim)
+        if emb is not None:
+            self.emb = torch.nn.Parameter(emb.clone())
+
+        self.mlp = MLP([2 * outdim, 2 * outdim, outdim, task_dim])
+        self.degree_emb = torch.nn.Embedding(max_degree, indim)
+
+    def initial_projection(self, g):
+        g.x = self.in_proj(g.x)
+        g.edge_attr = None
+        return g
+
+    def forward(self, g):
+        deg = degree(g.edge_index[1], g.num_nodes, dtype=torch.long)
+        deg = torch.clamp(deg, 0, self.degree_emb.num_embeddings - 1)
+        deg_emb = self.degree_emb(deg)
+        g.x = torch.cat([deg_emb, g.x], dim=-1)
+        g = self.initial_projection(g)
+        emb = self.model(g)
+        float_mask = g.target_node_mask.to(torch.float)
+        target_emb = float_mask.view(-1, 1) * emb
+        n_count = global_add_pool(float_mask, g.batch, g.num_graphs)
+        class_emb = global_add_pool(target_emb, g.batch, g.num_graphs)
+        class_emb = class_emb / n_count.view(-1, 1)
+        rep_class_emb = class_emb.repeat_interleave(g.num_classes, dim=0)
+        res = self.mlp(
+            torch.cat([rep_class_emb, g.x[g.true_nodes_mask]], dim=-1)
+        )
+        return res
+
+
+
 class BinGraphModel(torch.nn.Module):
     def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0, noise_feature = False):
         super().__init__()
@@ -129,7 +165,10 @@ class BinGraphAttModel(torch.nn.Module):
     def __init__(self, model, indim, outdim, task_dim, add_rwpe=None, dropout=0.0, noise_feature = False):
         super().__init__()
         self.model = model
-        self.in_proj = nn.Linear(indim, outdim)
+        if add_rwpe is not None:
+            self.in_proj = nn.Linear(indim, outdim - add_rwpe)
+        else:
+            self.in_proj = nn.Linear(indim, outdim)
         self.noise_feature = noise_feature
 
         self.mlp = MLP([outdim, 2 * outdim, outdim, task_dim], dropout=dropout)

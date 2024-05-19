@@ -5,6 +5,10 @@ from .sgcn import GraphEncoder
 from .mlp import MLP
 import torch
 from ..config import DATASET as task_config
+from ..utils import create_norm
+
+
+
 
 def build_model(args):
     num_heads = args.num_heads
@@ -78,13 +82,12 @@ def build_model_backbone(args, in_dim, out_dim):
         return GCN(
             in_dim,
             args.num_hidden,
+            args.num_layers,
             out_dim,
-            num_layers=args.num_layers,
             dropout=args.in_drop,
-            activation=args.activation,
-            residual=args.residual,
-            norm=create_norm(args.norm),
-            encoding=False
+            act=args.activation,
+            norm=args.norm,
+            jk='cat' if args.residual else None
         )
     elif args.encoder == 'mlp':
         return MLP(
@@ -110,7 +113,7 @@ def build_model_backbone(args, in_dim, out_dim):
 
 class TaskHeadModel(torch.nn.Module):
     def __init__(self, args, in_dim, encoder_space_dim, task_config):
-        super(MultiheadModel, self).__init__()
+        super().__init__()
         self.encoder = build_model_backbone(args, in_dim, encoder_space_dim)
         self.heads = {}
         self.Gs = []

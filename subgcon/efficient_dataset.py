@@ -77,10 +77,10 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.test_loader = None
         self.build() 
 
-    def build(self):
+    def build(self, time='train'):
         if self.topk == -1:
             return
-        if self.split_mode == 'graphsaint':
+        if self.split_mode == 'graphsaint' and time == 'train':
             os.makedirs(self.output_path, exist_ok=True)
             self.saint_loader = GraphSAINTRandomWalkSampler(self.data, batch_size=self.topk, walk_length=2, num_steps=5, sample_coverage=100, save_dir=self.output_path)
             return
@@ -106,7 +106,7 @@ class NodeSubgraphDataset(SubgraphDataset):
                         if self.test_loader is not None:
                             return self.test_loader
                         else:
-                            self.build()
+                            self.build(time='test')
                             return self.test_loader
             else:
                 if self.train_loader is None:
@@ -153,10 +153,10 @@ class LinkSubgraphDataset(SubgraphDataset):
         self.test_loader = None
         self.build() 
     
-    def build(self):
+    def build(self, time='train'):
         if self.topk == -1:
             return
-        if self.split_mode == 'graphsaint':
+        if self.split_mode == 'graphsaint' and time == 'train':
             os.makedirs(self.output_path, exist_ok=True)
             self.saint_loader = GraphSAINTRandomWalkSampler(self.data, batch_size=self.topk, walk_length=2, num_steps=5, sample_coverage=100, save_dir=self.output_path)
             return
@@ -181,7 +181,7 @@ class LinkSubgraphDataset(SubgraphDataset):
                         if self.test_loader is not None:
                             return self.test_loader
                         else:
-                            self.build()
+                            self.build(time='test')
                             return self.test_loader
             else:
                 if self.train_loader is None:

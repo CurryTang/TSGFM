@@ -28,7 +28,10 @@ from ogb.nodeproppred import PygNodePropPredDataset
 name2dataset = {"arxiv": SingleGraphOFADataset, "arxivyear": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
                 'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset, "bookchild": SingleGraphOFADataset, "amazonratings": SingleGraphOFADataset, "bookhis": SingleGraphOFADataset, "elecomp": SingleGraphOFADataset, "elephoto": SingleGraphOFADataset, "sportsfit": SingleGraphOFADataset, 'products': SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, "bace": MolOFADataset, "bbbp": MolOFADataset, 
-                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset, 'mag240m': SegmentDataset}
+                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset, 'mag240m': SegmentDataset, 'dblp': SingleGraphOFADataset}
+
+
+saved_edge_index = {}
 
 
 ########################################################################
@@ -282,10 +285,13 @@ def make_data(name, data, split_name, metric, eval_func, num_classes, **kwargs):
 
 def ConstructNodeCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, task_level, **kwargs):
     text_g = dataset.data
+    global saved_edge_index
+    if not kwargs.get("node_centered", True):
+        text_g.edge_index = saved_edge_index[dataset.name].edge_index
 
     return SubgraphHierDataset(text_g, prompt_feats["class_node_text_feat"], prompt_feats["prompt_edge_text_feat"],
                                prompt_feats["noi_node_text_feat"], split[split_name], to_undirected=True,
-                               process_label_func=to_bin_cls_func, prompt_edge_list=dataset.get_edge_list(task_level),
+                               process_label_func=to_bin_cls_func, prompt_edge_list=dataset.get_edge_list(task_level),  
                                **kwargs, )
 
 
@@ -300,6 +306,8 @@ def ConstructLinkCls(dataset, split, split_name, prompt_feats, to_bin_cls_func, 
     text_g = dataset.data
     edges = text_g.edge_index
     train_graph = global_data
+    global saved_edge_index
+    saved_edge_index[dataset.name] = train_graph
 
     return SubgraphLinkHierDataset(train_graph, prompt_feats["class_node_text_feat"],
                                    prompt_feats["prompt_edge_text_feat"], prompt_feats["noi_node_text_feat"],
@@ -462,7 +470,7 @@ none_process_label = None
 
 class UnifiedTaskConstructor:
     def __init__(self, tasks: list[str], encoder: utils.SentenceEncoder, task_config_lookup: dict,
-                 data_config_lookup: dict, root="cache_data", batch_size=256, sample_size=-1):
+                 data_config_lookup: dict, root="cache_data", batch_size=256, sample_size=-1, node_centered = True):
         """
         Construct tasks from a dictionary of dataset configurations. A task must contain a train dataset, but can
         have arbitrary number of valid/test dataset. A valid/test dataset is wrapped by a
@@ -485,6 +493,7 @@ class UnifiedTaskConstructor:
         self.data_config_lookup = data_config_lookup
         self.batch_size = batch_size
         self.sample_size = sample_size
+        self.node_centered = node_centered
         with open("data/low_resource_split.json", "r") as f:
             self.lr_class_split = json.load(f)
 
@@ -518,7 +527,7 @@ class UnifiedTaskConstructor:
                 stage_config["dataset"] = config["dataset"]
             dataset_name = stage_config["dataset"]
 
-            assert dataset_name in self.data_config_lookup
+            assert dataset_name in self.data_config_lookup, print(dataset_name)
 
             dataset_config = self.data_config_lookup[dataset_name]
 
@@ -581,7 +590,7 @@ class UnifiedTaskConstructor:
                                                       prompt_feats=prompt_feats, to_bin_cls_func=globals()[
                 dataset_config["process_label_func"]] if dataset_config.get("process_label_func") else None,
                                                       task_level=dataset_config["task_level"], global_data=global_data,
-                                                      data_name = data_name, full_name = full_name,
+                                                      data_name = data_name, full_name = full_name, node_centered = self.node_centered,
                                                       **dataset_config["args"])
         if stage_config["stage"] == "train":
             self.datasets[stage_config["stage"]].append(data)

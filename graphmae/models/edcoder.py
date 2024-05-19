@@ -249,7 +249,6 @@ class PreModel(nn.Module):
             token_nodes = mask_nodes
             out_x[mask_nodes] = 0.0
         
-        import ipdb; ipdb.set_trace()
         out_x[token_nodes] += self.enc_mask_token
 
         return out_x, (mask_nodes, keep_nodes)
@@ -284,7 +283,7 @@ class PreModel(nn.Module):
             use_edge_index = edge_index
 
 
-        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, edge_attr, return_hidden=True)
+        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, return_hidden=True)
         if self._concat_hidden:
             enc_rep = torch.cat(all_hidden, dim=1)
 

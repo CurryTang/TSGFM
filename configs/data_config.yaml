@@ -10,6 +10,33 @@ E2E-node: &E2E-node
   eval_func: classification_func
   eval_mode: max
 
+pretrain-node: &pretrain-node
+  task_level: e2e_node
+  preprocess: null
+  construct: ConstructNodeCls
+  args:
+    walk_length: null
+    single_prompt_edge: False
+    max_nodes_per_hop: 100
+  eval_metric: acc
+  eval_func: classification_func
+  dataset_splitter: FullTrainSplitter
+  eval_mode: max
+
+arxivall: &arxivall
+  <<: *pretrain-node
+  dataset_name: arxiv
+  process_label_func: process_pth_label
+  num_classes: 40
+
+productsall: &productsall
+  <<: *pretrain-node
+  dataset_name: products
+  process_label_func: process_pth_label
+  num_classes: 39
+
+
+
 arxiv: &arxiv
   <<: *E2E-node
   dataset_name: arxiv
@@ -87,12 +114,41 @@ cora_node: &cora_node
   process_label_func: process_int_label
   num_classes: 7
 
+cora_node_high: &cora_node_high
+  <<: *E2E-node
+  dataset_name: cora
+  dataset_splitter: CiteHigh
+  process_label_func: process_int_label
+  num_classes: 7
+
 citeseer_node: &citeseer_node
   <<: *E2E-node
   dataset_name: citeseer
-  dataset_splitter: OfficialSplitter
+  dataset_splitter: CiteSplitter
   process_label_func: process_int_label
   num_classes: 6
+
+citeseer_node_high: &citeseer_node_high
+  <<: *E2E-node
+  dataset_name: citeseer
+  dataset_splitter: CiteHigh
+  process_label_func: process_int_label
+  num_classes: 6
+
+dblp_node: &dblp_node
+  <<: *E2E-node
+  dataset_name: dblp
+  dataset_splitter: OfficialSplitter
+  process_label_func: process_int_label
+  num_classes: 4
+
+dblp_node_high: &dblp_node_high
+  <<: *E2E-node
+  dataset_name: dblp
+  dataset_splitter: CiteHigh
+  process_label_func: process_int_label
+  num_classes: 4
+
 
 logic_cora: &logic_cora
   <<: *cora_node
@@ -105,6 +161,13 @@ pubmed_node: &pubmed_node
   <<: *E2E-node
   dataset_name: pubmed
   dataset_splitter: CiteSplitter
+  process_label_func: process_int_label
+  num_classes: 3
+
+pubmed_node_high: &pubmed_node_high
+  <<: *E2E-node
+  dataset_name: pubmed
+  dataset_splitter: CiteHigh
   process_label_func: process_int_label
   num_classes: 3
 
@@ -125,7 +188,7 @@ arxivyear: &arxivyear
 mag240m: &mag240m
   <<: *E2E-node
   dataset_name: mag240m
-  dataset_splitter: FulltrainSplitter
+  dataset_splitter: FullTrainSplitter
   process_label_func: process_pth_label
   num_classes: 153
 
@@ -161,6 +224,25 @@ cora_link_eval:
   args:
     <<: *link-eval-args
 
+citeseer_link: &citeseer_link
+  <<: *E2E-link-cite
+  dataset_name: citeseer
+
+citeseer_link_eval:
+  <<: *citeseer_link
+  args:
+    <<: *link-eval-args
+
+dblp_link: &dblp_link 
+  <<: *E2E-link-cite
+  dataset_name: dblp
+
+dblp_link_eval:
+  <<: *dblp_link
+  args:
+    <<: *link-eval-args
+
+
 citationv8: &citationv8
   <<: *E2E-link-cite
   dataset_splitter: OfficialLinkSplitter
@@ -186,15 +268,6 @@ pubmed_link: &pubmed_link
 
 pubmed_link_eval:
   <<: *pubmed_link
-  args:
-    <<: *link-eval-args
-
-citeseer_link: &citeseer_link
-  <<: *E2E-link-cite
-  dataset_name: citeseer
-
-citeseer_link_eval:
-  <<: *citeseer_link
   args:
     <<: *link-eval-args
 
@@ -337,6 +410,23 @@ LR-node: &LR-node
   eval_metric: acc
   eval_func: classification_func
   eval_mode: max
+
+
+mag240m_fs: &mag240m_fs
+  <<: *LR-node
+  dataset_name: mag240m
+  dataset_splitter: FullTrainSplitter
+  process_label_func: process_pth_label
+  args:
+    walk_length: null
+    single_prompt_edge: True
+    n_way: 40
+    k_shot: 3
+    min_k_shot: 0
+    base_construct: ConstructNodeCls
+    no_class_node: True
+  num_classes: 40
+
 
 arxiv_fs: &arxiv_fs
   <<: *LR-node

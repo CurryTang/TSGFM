@@ -125,7 +125,11 @@ def get_data(dataset_name, val_pct, test_pct, tag_data_path, num_negs):
 
 
 def get_datas(args):
-    for d in args.pre_train_datasets:
+    for dd in args.pre_train_datasets:
+        if '-link' in dd:
+            d = dd.replace('-link', '')
+        else:
+            d = dd
         dataset, splits, directed, eval_metric = get_data(d, args.val_pct, args.test_pct, args.tag_data_path, args.num_negs)
         yield dataset, splits, directed, eval_metric, d
 
