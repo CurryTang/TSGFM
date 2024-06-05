@@ -14,6 +14,10 @@ We support the following two scenarios.
 * Co-training: Pre-training on a set of datasets and testing on the same ones
 * Pre-training: Pre-training on a set of datasets and testing on unseen ones
 
+## Install
+
+> pip install -r requirements.txt
+
 ## Datasets
 
 We follow OneForAll's way of managing the datasets. We support the following datasets. 
