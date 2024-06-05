@@ -7,7 +7,7 @@ from graphmae.utils import create_optimizer, accuracy
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
-
+from torch_geometric.nn import global_mean_pool
 
 
 class LinkPredictor(torch.nn.Module):
@@ -289,6 +289,51 @@ def linear_mini_batch_test(embedding, data, max_epoch, device, m_name='accuracy'
     # (final_acc, es_acc, best_acc)
     return test_acc, estp_test_acc, best_val_acc    
 
+def find_closest_class(x, meta_class_emb):
+    feature_tensor = x
+    label_embeddings = meta_class_emb
+    similarities = torch.mm(feature_tensor, label_embeddings.T)
+    closest_classes = similarities.argmax(dim=1) 
+    return closest_classes
+
+def pair_cosine_similarity(emb, edge_index):
+    source_idx = edge_index[0]
+    target_idx = edge_index[1]
+    source_emb = emb[source_idx]
+    target_emb = emb[target_idx]
+    cosine_sim = F.cosine_similarity(source_emb, target_emb, dim=1)
+    return cosine_sim
+
+
+def zero_shot_eval(embedding, data, device, evaluator = None, mode='node', m_name='accuracy'):
+    if mode == 'node':
+        closest_classes = find_closest_class(embedding, data.meta_class_emb)
+        pred = closest_classes[data.test_mask]
+        test_acc = accuracy(pred, data.y[data.test_mask])
+        val_acc = accuracy(closest_classes[data.val_mask], data.y[data.val_mask])
+        return val_acc, test_acc
+    elif mode == 'link':
+        pos_logits = pair_cosine_similarity(embedding, data.pos_test_edge_index)
+        neg_logits = pair_cosine_similarity(embedding, data.neg_test_edge_index)
+        res = evaluator.eval({
+            'y_pred_pos': pos_logits,
+            'y_pred_neg': neg_logits
+        })['hits@100']
+        valid_pos_logits = pair_cosine_similarity(embedding, data.pos_val_edge_index)
+        valid_neg_logits = pair_cosine_similarity(embedding, data.neg_val_edge_index)
+        val_res = evaluator.eval({
+            'y_pred_pos': valid_pos_logits,
+            'y_pred_neg': valid_neg_logits
+        })['hits@100']
+        return val_res, res
+    elif mode == 'graph':
+        embedding = global_mean_pool(embedding, data.batch)
+        closest_classes = find_closest_class(embedding, data.meta_class_emb)
+        pred = closest_classes[data.test_mask]
+        res = eval_func(pred, data.y[data.test_mask], m_name)
+        val_pred = closest_classes[data.val_mask]
+        val_res = eval_func(val_pred, data.y[data.val_mask], m_name)
+        return val_res, res
 
 def linear_test(embedding, data, max_epoch, device, m_name='accuracy', mute = False, eval_device = 'cpu'):
     lr = LogisticRegression(embedding.shape[1], data.num_classes).to(eval_device)

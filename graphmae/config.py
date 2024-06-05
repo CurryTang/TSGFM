@@ -1,6 +1,7 @@
 DATASET = {
     'cora': {'name': 'cora', 'level': 'node', 'task_dim': 7, 'metric': 'accuracy'},
     'dblp': {'name': 'dblp', 'level': 'node', 'task_dim': 4, 'metric': 'accuracy'},
+    'amazonratings': {'name': 'amazonratings', 'level': 'node', 'task_dim': 5, 'metric': 'accuracy'},
     'dblp-link': {'name': 'dblp-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
     'cora-link': {'name': 'cora-link', 'level': 'link', 'task_dim': 1, 'metric': 'hits@100'},
     'citeseer': {'name': 'citeseer', 'level': 'node', 'task_dim': 6, 'metric': 'accuracy'},

@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
 from difflib import SequenceMatcher
+import pandas as pd
 
 def similarity(str1, str2):
     return SequenceMatcher(None, str1, str2).ratio()
@@ -36,9 +37,20 @@ def find_closest_label(text, labels):
   return closest_label
 
 
+def set_label_names(data, label_csv_path):
+    label_pd = pd.read_csv(label_csv_path)
+    if hasattr(data, 'label_names'):
+        return data 
+    label_names = label_pd['name'].tolist()
+    data.label_names = label_names
+    return data
+
+
 
 def eval_nc(res_path, data_path):
     data=torch.load(data_path)[0]
+    data_dir_path = osp.dirname(data_path)
+    set_label_names(data, osp.join(data_dir_path, 'categories.csv'))
     labels=data.label_names
     labels = [x.lower().strip() for x in labels]
     ys=data.y.numpy().tolist()
@@ -53,6 +65,8 @@ def eval_nc(res_path, data_path):
             res = json.loads(line)
             ans = res["text"]
             y=ys[res["question_id"]]
+            if isinstance(y, list):
+                y=y[0]
             label=labels[y]
             match = False
             if ans.lower().strip() in labels:

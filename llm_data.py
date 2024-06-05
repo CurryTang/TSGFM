@@ -6,6 +6,7 @@ from torch_geometric.utils import index_to_mask
 import os
 ## the following is the full set
 # node_level_datasets = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookchild', 'bookhis', 'elecomp', 'elephoto', 'sportsfit', 'products']
+node_level_datasets = ['amazonratings']
 
 def load_local_data(dataset_name):
     path = "/egr/research-dselab/chenzh85/nips/MyOFA/cache_data_minilm"
@@ -40,7 +41,7 @@ if __name__ == '__main__':
 
     # ## we first sanity check the simplest one
     # node_level_datasets = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookchild', 'bookhis', 'elecomp', 'elephoto', 'sportsfit', 'products']
-    node_level_datasets = ['dblp']
+    # node_level_datasets = ['dblp']
     # #node_level_datasets = []
     # link_level_datasets = []
     # link_level_datasets = ['cora', 'citeseer', 'pubmed']

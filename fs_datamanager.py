@@ -35,6 +35,87 @@ class SimpleFSManager:
         return np.array(samples), target_classes
 
 
+# def low_label_rate_manager(data_path, data_name):
+#     saved_path = os.path.join(data_path, data_name, "low_label_rate.pt") 
+#     original_data_path = os.path.join(data_path, data_name, "geometric_data_processed.pt")
+
+class LowRateLabelManager(SimpleFSManager):
+    def __init__(self, class_ind, data_ind, k_shot, q_query, n_way, min_k_shot=None, min_n_way=None, test_idx = None, labels = None):
+        self.class_ind = class_ind
+        self.data_ind = data_ind
+        self.k_shot = k_shot
+        self.q_query = q_query
+        self.n_way = n_way
+        self.min_n_way = min_n_way
+        self.min_k_shot = min_k_shot
+        self.test_idx = test_idx
+        self.labels = labels
+        self.total_labels = sorted(list(set(labels)))
+        super(LowRateLabelManager, self).__init__(self.class_ind, self.data_ind, self.k_shot, self.q_query, self.n_way, self.min_k_shot, self.min_n_way)
+
+    def get_few_shot_idx(self, mode='train', idx = -1):
+        n_way = self.n_way
+        k_shot = self.k_shot
+        if mode == 'train':
+            return super().get_few_shot_idx()
+        else:
+            cidx = self.class_ind.index(self.labels[idx])
+            target_classes_ind = random_choice_with_first(list(range(self.class_ind)), size=n_way, first_element=cidx)
+            target_classes = self.class_ind[target_classes_ind]
+            samples = []
+            for idx in target_classes_ind:
+                if idx == cidx:
+                    sel = []
+                    sel.append(idx)
+                    sel.extend(np.random.choice(self.data_ind[idx], k_shot).tolist())
+                    sel = np.array(sel)
+                    samples.append(sel)
+                else:
+                    samples.append(np.random.choice(self.data_ind[idx], k_shot + self.q_query))
+            return np.array(samples), target_classes, cidx
+
+def random_choice_with_first(a, size=None, replace=True, p=None, first_element=None):
+    """
+    Randomly choose elements from an array, with the option to specify the first element.
+
+    Parameters:
+    a : 1-D array-like or int
+        If an ndarray, a random sample is generated from its elements. If an int, the random sample is generated as if a was np.arange(a).
+    size : int or tuple of ints, optional
+        Output shape. If the given shape is, e.g., (m, n, k), then m * n * k samples are drawn. Default is None, in which case a single value is returned.
+    replace : boolean, optional
+        Whether the sample is with or without replacement. Default is True.
+    p : 1-D array-like, optional
+        The probabilities associated with each entry in a. If not given, the sample assumes a uniform distribution over all entries in a.
+    first_element : Any, optional
+        The element that should be selected first. If None, the first element is chosen randomly.
+
+    Returns:
+    samples : single item or ndarray
+        The generated random samples.
+    """
+    
+    # Handle the first element
+    if first_element is not None:
+        # Ensure the first element exists in the array
+        if first_element not in a:
+            raise ValueError("first_element must be in the array a")
+
+        # Remove the first element to avoid duplication if sampling without replacement
+        if not replace:
+            a = [x for x in a if x != first_element]
+
+        # Draw the remaining samples
+        remaining_samples = np.random.choice(a, size=(size - 1) if size else None, replace=replace, p=p)
+        
+        # Combine the first element with the remaining samples
+        samples = np.concatenate(([first_element], remaining_samples))
+    else:
+        # Standard random choice if no first element is specified
+        samples = np.random.choice(a, size=size, replace=replace, p=p)
+    
+    return samples
+
 class DataManager:
     @abstractmethod
     def get_data_loader(self, mode):

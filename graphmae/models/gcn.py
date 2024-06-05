@@ -160,7 +160,7 @@ class GNN_node_Virtualnode(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.atom_encoder = AtomEncoder(emb_dim)
+        # self.atom_encoder = AtomEncoder(emb_dim)
 
         ### set the initial virtual node embedding to 0.
         self.virtualnode_embedding = torch.nn.Embedding(1, emb_dim)

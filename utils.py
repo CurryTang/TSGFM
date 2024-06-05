@@ -10,9 +10,10 @@ import gc
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 import torch.nn.functional as F
-
-
-ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384, 'random': 128, 'tfidf': 300}
+from transformers import AutoTokenizer, AutoModel, AutoConfig
+from peft import PeftModel
+from llm2vec import LLM2Vec
+ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384, 'random': 128, 'tfidf': 300, "e5_mistral": 4096, "l2v": 4096, "mpnet": 768}
 
 def generate_tfidf_pytorch(texts, hidden_dimension=300):
     """
@@ -57,6 +58,10 @@ class SentenceEncoder:
         elif self.name == 'minilm':
             self.model = SentenceTransformer("all-MiniLM-L6-v2", device=self.device, cache_folder=self.root)
             self.encode = self.ST_encode
+        
+        elif self.name == 'mpnet':
+            self.model = SentenceTransformer("all-mpnet-base-v2", device=self.device, cache_folder=self.root)
+            self.encode = self.ST_encode
 
         elif self.name == "llama2_7b":
             # model_path = os.path.join(os.path.abspath(os.path.dirname(os.getcwd())), 'llama-2-7b')
@@ -92,7 +97,40 @@ class SentenceEncoder:
             self.model = SentenceTransformer("intfloat/e5-mistral-7b-instruct", device=self.device, cache_folder=self.root)
             self.model.max_seq_length = 4096
             self.encode = self.prompt_ST_encode
+        
+        elif self.name == 'l2v':
+            # Loading base Mistral model, along with custom code that enables bidirectional connections in decoder-only LLMs. MNTP LoRA weights are merged into the base model.
+            tokenizer = AutoTokenizer.from_pretrained(
+                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", cache_dir=self.root
+            )
+            config = AutoConfig.from_pretrained(
+                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", trust_remote_code=True, cache_dir=self.root
+            )
+            model = AutoModel.from_pretrained(
+                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
+                trust_remote_code=True,
+                config=config,
+                torch_dtype=torch.bfloat16,
+                device_map="cuda" if torch.cuda.is_available() else "cpu",
+                cache_dir=self.root
+            )
+            model = PeftModel.from_pretrained(
+                model,
+                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
+                cache_dir=self.root
+            )
+            model = model.merge_and_unload()  # This can take several minutes on cpu
 
+            # Loading supervised model. This loads the trained LoRA weights on top of MNTP model. Hence the final weights are -- Base model + MNTP (LoRA) + supervised (LoRA).
+            model = PeftModel.from_pretrained(
+                model, "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp-supervised",
+                cache_dir=self.root
+            )
+
+            # Wrapper for encoding and pooling operations
+            l2v = LLM2Vec(model, tokenizer, pooling_mode="mean", max_length=512)
+            self.model = l2v
+            self.encode = self.l2v_encode
         elif self.name == "roberta":
             self.model = SentenceTransformer("sentence-transformers/roberta-base-nli-stsb-mean-tokens",
                 device=self.device, cache_folder=self.root, )
@@ -136,6 +174,22 @@ class SentenceEncoder:
     def tfidf_encode(self, texts, to_tensor=True):
         embeddings = generate_tfidf_pytorch(texts, hidden_dimension=ENCODER_DIM_DICT['tfidf'])
         return F.normalize(embeddings)
+
+    def l2v_encode(self, texts, to_tensor=True):
+        all_embeddings = []
+        with torch.no_grad():
+            for start_index in trange(0, len(texts), self.batch_size, desc="Batches", disable=False, ):
+                sentences_batch = texts[start_index: start_index + self.batch_size]
+                if not isinstance(sentences_batch, list):
+                    sentences_batch = sentences_batch.tolist()
+                d_reps = self.model.encode(sentences_batch)
+                all_embeddings.append(d_reps)
+
+        all_embeddings = torch.cat(all_embeddings, dim=0)
+        if not to_tensor:
+            all_embeddings = all_embeddings.numpy()
+
+        return all_embeddings
 
     def llama_encode(self, texts, to_tensor=True):
 

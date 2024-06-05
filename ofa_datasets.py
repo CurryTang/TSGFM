@@ -137,6 +137,7 @@ class GraphTextDataset(DatasetWithCollate, ABC):
         """
         Process labels into one-/multi-hot format using self.process_label_func
         """
+        # label = label.to(torch.long)
         if self.process_label_func is None:
             trimed_class = torch.zeros((1, len(self.class_emb)))
             trimed_class[0, label] = 1
@@ -568,6 +569,7 @@ class FewShotDataset(DatasetWithCollate):
                     spt_graphs.append(
                         self.get_noi_graph(self.support_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
 
+
         # Randomly select one query node
         qry_ind = torch.randint(n_way, (1, 1))
         qry_graph = qry_graphs[qry_ind.view(-1)]
@@ -613,6 +615,105 @@ class FewShotDataset(DatasetWithCollate):
     def get_collate_fn(self):
         return pyg.loader.dataloader.Collater(None, None)
 
+
+class LowRateDataset(DatasetWithCollate):
+    def __init__(self, fsmanager, query_graph_dataset, support_graph_dataset, fs_edge_feats, sample_size=1000, mode='train'):
+        """
+        FewShotDataset: use data indices generated from fsmanager to index into
+        query_graph_dataset/support_graph_dataset (GraphTextDataset) to get query and support prompted graph only
+        with NOI prompt node. It them assembles the graphs to a few-shot in-context prompted graphs.
+        Args:
+            fsmanager: query and support data indices manager
+            query_graph_dataset: GraphTextDataset
+            support_graph_dataset: GraphTextDataset
+            fs_edge_feats: Few-shot edge features
+            sample_size: number of samples, to be used with Dataloader
+        """
+        super().__init__()
+        # mode 0 for sample index from training classes, 1 for val, 2 for test
+        self.mode = mode
+        self.fs_idx_loader = fsmanager
+        self.query_graph_dataset = query_graph_dataset
+        self.support_graph_dataset = support_graph_dataset
+        self.fs_edge_feats = fs_edge_feats
+        self.sample_size = sample_size
+
+    def get_noi_graph(self, dataset: GraphTextDataset, index, class_emb):
+        feature_graph = list(dataset.make_feature_graph(index))
+        feature_graph[-3] = class_emb
+        prompted_graph = dataset.make_prompted_graph(feature_graph)
+        return prompted_graph
+
+    def __len__(self):
+        return self.sample_size
+
+    def __getitem__(self, index):
+        # node_ids: (n_way, k_shot + 1)
+        # node_cls: (n_way), representing true classes corresponding to n ways to query into class_emb
+        node_ids, class_ind, cidx = self.fs_idx_loader.get_few_shot_idx(mode=self.mode, idx=index)
+        n_way = len(class_ind)
+        k_shot = len(node_ids[0]) - 1
+        q_query = 1
+        class_emb = self.query_graph_dataset.class_emb[class_ind]
+
+        # spt_subgraphs will store all n_way x k_shot subgraph info
+        # qry subgraphs will store all n_way x q_query subgraph info
+        qry_graphs, spt_graphs, final_subgraphs = [], [], []
+        for cls_idx in range(len(node_ids)):
+            for shot_idx in range(len(node_ids[0])):
+                # sm.record()
+                if shot_idx < q_query and cls_idx == cidx:
+                    qry_graphs.append(
+                        self.get_noi_graph(self.query_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
+                else:
+                    spt_graphs.append(
+                        self.get_noi_graph(self.support_graph_dataset, node_ids[cls_idx, shot_idx], class_emb))
+
+        
+        # Randomly select one query node
+        qry_ind = torch.randint(n_way, (1, 1))
+        qry_graph = qry_graphs[qry_ind.view(-1)]
+        graphs = [qry_graph] + spt_graphs
+        feat_lst, edge_index, label, edge_feat, e_type = zip(*graphs)
+        n_node = torch.tensor([len(feat) for feat in feat_lst])
+        n_edge = torch.tensor([len(feat[0]) for feat in edge_index])
+        noi_node_idx = torch.cumsum(n_node, dim=0)
+        offset = torch.cat([torch.tensor([0]), noi_node_idx])[:-1]
+        noi_node_idx = noi_node_idx - 1
+        meta_feat = torch.cat(feat_lst, dim=0)
+        meta_n_nodes = len(meta_feat)
+        if k_shot > 0:
+            meta_feat = torch.cat([meta_feat, self.query_graph_dataset.noi_node_emb.repeat_interleave(len(class_emb), dim=0)], dim=0)
+        else:
+            meta_feat = torch.cat([meta_feat, class_emb], dim=0)
+        class_node_indices = torch.arange(meta_n_nodes, meta_n_nodes + n_way)
+        spt_class_node_indices = class_node_indices.repeat_interleave(k_shot)
+        meta_edge = torch.cat(edge_index, dim=-1) + offset.repeat_interleave(n_edge)
+        qry_meta_edge = torch.stack([noi_node_idx[0].repeat(n_way), class_node_indices], dim=0)
+        spt_meta_edge = torch.stack([noi_node_idx[1:], spt_class_node_indices], dim=0)
+        meta_edge = torch.cat([meta_edge, qry_meta_edge, spt_meta_edge], dim=-1)
+
+        meta_edge_feat = torch.cat(list(edge_feat) + [self.fs_edge_feats[0].repeat(len(qry_meta_edge[0]), 1),
+                                                      self.fs_edge_feats[1].repeat(len(spt_meta_edge[0]), 1)], dim=0)
+        meta_e_type = torch.cat(list(e_type) + [torch.zeros(len(qry_meta_edge[0]), dtype=torch.long) + 2,
+                                                torch.zeros(len(spt_meta_edge[0]), dtype=torch.long) + 4])
+
+        new_subg = pyg.data.Data(meta_feat, meta_edge, y=qry_ind, edge_attr=meta_edge_feat, edge_type=meta_e_type)
+
+        bin_labels = torch.zeros(new_subg.num_nodes, dtype=torch.float)
+        bin_labels[new_subg.num_nodes - n_way + qry_ind.view(-1)] = 1
+        new_subg.bin_labels = bin_labels
+        set_mask(new_subg, "true_nodes_mask", list(range(new_subg.num_nodes - n_way, new_subg.num_nodes)))
+        set_mask(new_subg, "noi_node_mask", noi_node_idx)
+        set_mask(new_subg, "target_node_mask", offset)
+        set_mask(new_subg, "feat_node_mask", offset)
+        new_subg.sample_num_nodes = new_subg.num_nodes
+        new_subg.num_classes = n_way
+        # print("text", new_subg)
+        return new_subg
+
+    def get_collate_fn(self):
+        return pyg.loader.dataloader.Collater(None, None)
 
 class MultiDataset(DatasetWithCollate):
     """
@@ -669,31 +770,32 @@ class MultiDataset(DatasetWithCollate):
         return self.datas[0].get_collate_fn()
 
     def update(self, metric):
-        metric = np.array(metric)
-        p_records = np.array(self.performance_record)
-        for i in range(len(self.datas)):
-            if len(p_records) < self.window_size[i] or len(self.data_val_index[i]) == 0:
-                continue
+        try:
+            metric = np.array(metric)
+            p_records = np.array(self.performance_record)
+            for i in range(len(self.datas)):
+                if len(p_records) < self.window_size[i] or len(self.data_val_index[i]) == 0:
+                    continue
 
-            vals = p_records[-int(self.window_size[i]):, self.data_val_index[i]]
-            if self.mode is None:
-                mode = np.ones(len(vals[0]), dtype=float)
-            else:
-                mode = self.mode[self.data_val_index[i]]
-            mean = vals.mean()
+                vals = p_records[-int(self.window_size[i]):, self.data_val_index[i]]
+                if self.mode is None:
+                    mode = np.ones(len(vals[0]), dtype=float)
+                else:
+                    mode = self.mode[self.data_val_index[i]]
+                mean = vals.mean()
 
-            metric_vals = metric[self.data_val_index[i]]
-            mean_improvement = (((metric_vals - mean) / mean) * mode).sum()
-            if mean_improvement > 0:
-                self.inpatience[i] = 0
-            else:
-                self.inpatience[i] += 1
-            try:
+                metric_vals = metric[self.data_val_index[i]]
+                mean_improvement = (((metric_vals - mean) / mean) * mode).sum()
+                if mean_improvement > 0:
+                    self.inpatience[i] = 0
+                else:
+                    self.inpatience[i] += 1
+
                 if self.inpatience[i] > self.patience[i]:
                     self.dataset_multiple[i] = max(self.min_ratio[i],
-                                               self.dataset_multiple[i] / 2)  # self.inpatience[i] = 0
-            except Exception as e:
+                                                self.dataset_multiple[i] / 2)  # self.inpatience[i] = 0
+            self.compute_sizes()
+            self.performance_record.append(metric)
+        except Exception as e:
                 print(e)
                 print("Update dataset multiple failed")
-        self.compute_sizes()
-        self.performance_record.append(metric)

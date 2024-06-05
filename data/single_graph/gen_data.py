@@ -3,7 +3,7 @@ import os
 from data.ofa_data import OFAPygDataset
 
 AVAILABLE_DATA = ["cora", "pubmed", "wikics", "arxiv", 'citeseer', 'arxiv23', 'bookchild', 'bookhis', 'citationv8', 
-                  'elecomp', 'elephoto', 'goodreads', 'hepph', 'sportsfit', 'amazonratings', 'products', 'arxivyear', 'dblp']
+                  'elecomp', 'elephoto', 'goodreads', 'hepph', 'sportsfit', 'amazonratings', 'products', 'arxivyear', 'dblp', 'tolokers']
 
 
 class SingleGraphOFADataset(OFAPygDataset):

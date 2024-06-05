@@ -9,11 +9,12 @@ from data.KG.gen_data import KGOFADataset
 from data.chemmol.gen_data import MolOFADataset
 from data.single_graph.gen_data import SingleGraphOFADataset
 from data.mag240m.gen_data import SegmentDataset
+import os
 
 from ofa_datasets import (GraphListDataset, SubgraphDataset, MultiDataset, GraphListHierDataset, SubgraphHierDataset,
                           SubgraphLinkHierDataset, SubgraphKGHierDataset, SubgraphNopromptDataset,
                           GraphListNopromptDataset, SubgraphNopromptLinkDataset, FewShotDataset, MassiveDataset)
-from fs_datamanager import FewShotDataManager, SimpleFSManager
+from fs_datamanager import FewShotDataManager, SimpleFSManager, LowRateLabelManager
 
 from gp.utils.utils import k_fold_ind, k_fold2_split
 from gp.lightning.data_template import DataWithMeta
@@ -28,7 +29,7 @@ from ogb.nodeproppred import PygNodePropPredDataset
 name2dataset = {"arxiv": SingleGraphOFADataset, "arxivyear": SingleGraphOFADataset, "cora": SingleGraphOFADataset, "pubmed": SingleGraphOFADataset,
                 'citeseer': SingleGraphOFADataset, 'arxiv23': SingleGraphOFADataset, "WN18RR": KGOFADataset, "FB15K237": KGOFADataset, "wikics": SingleGraphOFADataset, "bookchild": SingleGraphOFADataset, "amazonratings": SingleGraphOFADataset, "bookhis": SingleGraphOFADataset, "elecomp": SingleGraphOFADataset, "elephoto": SingleGraphOFADataset, "sportsfit": SingleGraphOFADataset, 'products': SingleGraphOFADataset,
                 "chemblpre": MolOFADataset, "chempcba": MolOFADataset, "chemhiv": MolOFADataset, "bace": MolOFADataset, "bbbp": MolOFADataset, 
-                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset, 'mag240m': SegmentDataset, 'dblp': SingleGraphOFADataset}
+                "muv": MolOFADataset, "toxcast": MolOFADataset, "tox21": MolOFADataset, 'mag240m': SegmentDataset, 'dblp': SingleGraphOFADataset, 'tolokers': SingleGraphOFADataset}
 
 
 saved_edge_index = {}
@@ -72,7 +73,76 @@ def generate_train_val_test_masks(dataset_size, train_ratio, validation_ratio, t
 
     return train_mask, val_mask, test_mask
 
+class LabelPerClassSplit(object):
+    """
+    Class for splitting data into training, validation, and test sets based on labels.
 
+    This class provides a callable object for splitting data into training, validation, and test sets.
+    The splitting is done based on the labels of the data, with a specified number of labels per class for the training set.
+    """
+    def __init__(
+            self,
+            num_labels_per_class: int = 20,
+            num_valid: int = 500,
+            num_test: int = 1000,
+            inside_old_mask: bool = False
+    ):
+        """
+        Constructor method for the LabelPerClassSplit class.
+
+        Initializes a new instance of the LabelPerClassSplit class with the provided parameters.
+
+        Parameters:
+        num_labels_per_class (int, optional): The number of labels per class for the training set. Defaults to 20.
+        num_valid (int, optional): The number of validation data points. Defaults to 500.
+        num_test (int, optional): The number of test data points. If -1, all remaining data points after training and validation are used for testing. Defaults to -1.
+        inside_old_mask (bool, optional): Whether to consider only data points inside the old mask for splitting. Defaults to False.
+
+        Returns:
+        None
+        """
+        self.num_labels_per_class = num_labels_per_class
+        self.num_valid = num_valid
+        self.num_test = num_test
+        self.inside_old_mask = inside_old_mask
+
+    def __call__(self, data, total_num):
+        """
+        Callable method for the LabelPerClassSplit class.
+
+        This method splits the data into training, validation, and test sets based on the labels of the data.
+
+        Parameters:
+        data: The data to be split.
+        total_num (int): The total number of data points.
+
+        Returns:
+        tuple: A tuple containing the masks for the training, validation, and test sets.
+        """
+        new_train_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_val_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_test_mask = torch.zeros(total_num, dtype=torch.bool)
+
+        perm = torch.randperm(total_num)
+        train_cnt = np.zeros(data.y.max().item() + 1, dtype=np.int32)
+
+        for i in range(perm.numel()):
+            label = data.y[perm[i]]
+            if train_cnt[label] < self.num_labels_per_class:
+                train_cnt[label] += 1
+                new_train_mask[perm[i]] = 1
+            elif new_val_mask.sum() < self.num_valid:
+                new_val_mask[perm[i]] = 1
+            else:
+                if new_test_mask.sum() < self.num_test:
+                    new_test_mask[perm[i]] = 1
+                else:
+                    break
+        
+        if self.num_test == -1:
+            new_test_mask = ~new_train_mask & ~new_val_mask
+
+        return new_train_mask, new_val_mask, new_test_mask
 
 def ArxivSplitter(dataset):
     text_g = dataset.data
@@ -116,6 +186,41 @@ def ArxivFSSplitter(dataset):
             data_idx.append(cls_data_idx.numpy())
         fs_split.append([np.array(cls_idx), data_idx])
     return {"train": fs_split[0], "valid": fs_split[1], "test": fs_split[2]}
+
+
+def ProductsFSSplitter(dataset):
+    labels = dataset.data.y
+    with open("data/low_resource_split.json", "r") as f:
+        lr_class_split = json.load(f)
+    arxiv_cls_split = lr_class_split["products"]
+    fs_split = []
+    for split in arxiv_cls_split:
+        cls_idx = []
+        data_idx = []
+        for cls in split:
+            cls_idx.append(cls)
+            cls_data_idx = (labels == cls).nonzero(as_tuple=True)[0]
+            data_idx.append(cls_data_idx.numpy())
+        fs_split.append([np.array(cls_idx), data_idx])
+    return {"train": fs_split[0], "valid": fs_split[1], "test": fs_split[2]}
+
+
+def SportsfitFSSplitter(dataset):
+    labels = dataset.data.y
+    with open("data/low_resource_split.json", "r") as f:
+        lr_class_split = json.load(f)
+    arxiv_cls_split = lr_class_split["sportsfit"]
+    fs_split = []
+    for split in arxiv_cls_split:
+        cls_idx = []
+        data_idx = []
+        for cls in split:
+            cls_idx.append(cls)
+            cls_data_idx = (labels == cls).nonzero(as_tuple=True)[0]
+            data_idx.append(cls_data_idx.numpy())
+        fs_split.append([np.array(cls_idx), data_idx])
+    return {"train": fs_split[0], "valid": fs_split[1], "test": fs_split[2]}
+
 
 
 def CiteSplitter(dataset):
@@ -243,6 +348,53 @@ def WikiSplitter(dataset):
 def MolSplitter(dataset):
     return dataset.get_idx_split()
 
+def TwentySplitter(dataset):
+    text_g = dataset.data 
+    labels = text_g.y.view(-1)
+    splitter = LabelPerClassSplit(num_labels_per_class=20, num_valid=500, num_test=1000)
+    train_mask, val_mask, test_mask = splitter(text_g, len(labels))
+    split = {"train": train_mask.nonzero(as_tuple=True)[0],
+                "valid": val_mask.nonzero(as_tuple=True)[0],
+                "test": test_mask.nonzero(as_tuple=True)[0], }
+    return split
+
+def LowRateSplitter(dataset):
+    text_g = dataset.data 
+    labels = text_g.y.view(-1)
+    if dataset.name == 'chemhiv':
+        splits = dataset.get_idx_split()
+        old_train = splits['train']
+        val_mask = torch.tensor(splits['valid'])
+        test_mask = torch.tensor(splits['test'])
+        train_mask = torch.zeros(len(labels), dtype=torch.bool)
+        train_mask[old_train] = True
+        train_mask_1 = train_mask & (labels == 1)
+        train_mask_0 = train_mask & (labels == 0)
+        train_mask_1 = train_mask_1.nonzero(as_tuple=True)[0][:3]
+        train_mask_0 = train_mask_0.nonzero(as_tuple=True)[0][:3]
+        train_mask = torch.cat([train_mask_0, train_mask_1])
+        split = {"train": train_mask, "valid": val_mask, "test": test_mask}
+    else:
+        splitter = LabelPerClassSplit(num_labels_per_class=3, num_valid=500, num_test=5000)
+        train_mask, val_mask, test_mask = splitter(text_g, len(labels))
+        split = {"train": train_mask.nonzero(as_tuple=True)[0],
+                "valid": val_mask.nonzero(as_tuple=True)[0],
+                "test": test_mask.nonzero(as_tuple=True)[0], }
+    return split
+
+def MolFSTrainSplitter(dataset):
+    fs_split = {}
+    # use all chemblepre classes as training classes for few-shot/zero-shot tasks
+    all_classes = dataset.y.view(len(dataset), -1)
+    positive_samples = [(cls==1).nonzero(as_tuple=True)[0] for cls in all_classes.T]
+    negative_samples = [(cls==0).nonzero(as_tuple=True)[0] for cls in all_classes.T]
+    all_idx2cls = [np.array([i for i in range(2 * len(positive_samples))]), negative_samples + positive_samples]
+    fs_split['train'] = all_idx2cls
+    fs_split['valid'] = all_idx2cls
+    fs_split['test'] = all_idx2cls
+
+    return fs_split
+
 
 #############################################
 #   Preprocessing functions                 #
@@ -354,9 +506,31 @@ def ConstructSegmentCls(dataset, split, split_name, prompt_feats, to_bin_cls_fun
                                 process_label_func=to_bin_cls_func, prompt_edge_list=dataset.get_edge_list(task_level),
                                 **kwargs, )
 
+def ConstructLowRateTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, task_level, global_data, **kwargs):
+    labels = dataset.y
+    test_idx = split['test']
+    original_idx = torch.arange(len(labels))
+    pseudo_split = {"pseudo": original_idx}
+    query_idx = []
+    count = 0
+    for d in split[split_name][1]:
+        query_idx.append(torch.arange(count, count + len(d), dtype=torch.long))
+        count += len(d)
+
+    query_graph_dataset = globals()[kwargs["base_construct"]](dataset=dataset, split=pseudo_split, split_name="pseudo",prompt_feats=prompt_feats, to_bin_cls_func=None, global_data=global_data, task_level=task_level, **kwargs) 
+
+    support_graph_dataset = globals()[kwargs["base_construct"]](dataset=dataset, split=pseudo_split, split_name="pseudo",prompt_feats=prompt_feats, to_bin_cls_func=None, global_data=global_data, task_level=task_level, **kwargs)
+
+    fs_loader = LowRateLabelManager(split[split_name][0], query_idx, kwargs["k_shot"], 1, kwargs["n_way"], kwargs.get("min_k_shot"), kwargs.get("min_n_way"), test_idx, labels)
+
+    return FewShotDataset(fs_loader, query_graph_dataset, support_graph_dataset, prompt_feats["prompt_edge_text_feat"][1:])
+
+ 
+
 
 
 def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, global_data, task_level, **kwargs):
+    ## here the split is n way k shot
     original_idx = np.concatenate(split[split_name][1])
     pseudo_split = {"pseudo": original_idx}
     query_idx = []
@@ -374,8 +548,9 @@ def ConstructFSTask(dataset, split, split_name, prompt_feats, to_bin_cls_func, g
                                                                 to_bin_cls_func=None, global_data=global_data,
                                                                 task_level=task_level, **kwargs)
 
+
     fs_loader = SimpleFSManager(split[split_name][0], query_idx, kwargs["k_shot"], 1, kwargs["n_way"],
-                                kwargs.get("min_k_shot"), kwargs.get("min_n_way"))
+                                kwargs.get("min_k_shot"), kwargs.get("min_n_way"))    
     return FewShotDataset(fs_loader, query_graph_dataset, support_graph_dataset,
                           prompt_feats["prompt_edge_text_feat"][1:])
 
@@ -470,7 +645,7 @@ none_process_label = None
 
 class UnifiedTaskConstructor:
     def __init__(self, tasks: list[str], encoder: utils.SentenceEncoder, task_config_lookup: dict,
-                 data_config_lookup: dict, root="cache_data", batch_size=256, sample_size=-1, node_centered = True):
+                 data_config_lookup: dict, root="cache_data", batch_size=256, sample_size=-1, node_centered = True, data_cache_path='cache_data_minilm'):
         """
         Construct tasks from a dictionary of dataset configurations. A task must contain a train dataset, but can
         have arbitrary number of valid/test dataset. A valid/test dataset is wrapped by a
@@ -494,6 +669,7 @@ class UnifiedTaskConstructor:
         self.batch_size = batch_size
         self.sample_size = sample_size
         self.node_centered = node_centered
+        self.data_cache_path = data_cache_path
         with open("data/low_resource_split.json", "r") as f:
             self.lr_class_split = json.load(f)
 
@@ -556,11 +732,16 @@ class UnifiedTaskConstructor:
         Split data based on task_level
         """
         split_key = self.get_split_key(dataset_config)
+        ## cache me if u can
+        # if os.path.exists(os.path.join(self.data_cache_path, dataset_config["dataset_name"], f"{dataset_config['task_level']}_splits.pt")):
+        #     split = torch.load(os.path.join(self.data_cache_path, dataset_config["dataset_name"], f"{dataset_config['task_level']}_splits.pt"))
+        #     return split[split_key]
         if split_key not in self.dataset_split:
             dataset_splitter = dataset_config.get("dataset_splitter")
             split = globals()[dataset_splitter](
                 self.dataset[dataset_config["dataset_name"]]) if dataset_splitter else None
             self.dataset_split[split_key] = split
+        torch.save(self.dataset_split, os.path.join(self.data_cache_path, dataset_config["dataset_name"], f"{dataset_config['task_level']}_splits.pt"))
         return self.dataset_split[split_key]
 
     def get_global_data(self, dataset_config):
@@ -569,6 +750,7 @@ class UnifiedTaskConstructor:
         function is called and the returned values are stored.
         """
         split_key = self.get_split_key(dataset_config)
+        # import ipdb; ipdb.set_trace()
         if split_key not in self.preprocess_storage:
             preprocessor = dataset_config.get("preprocess")
             global_data = globals()[preprocessor](self.dataset[dataset_config["dataset_name"]],

@@ -27,7 +27,7 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
                           'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics', 
                           'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link', 
-                          "arxiv-link", 'bookhis-link', 'bookchild-link', 'elephoto-link', 'elecomp-link', 'sportsfit-link', 'products-link', 'dblp', 'dblp-link']
+                          "arxiv-link", 'bookhis-link', 'bookchild-link', 'elephoto-link', 'elecomp-link', 'sportsfit-link', 'products-link', 'dblp', 'dblp-link', 'chemhiv', 'amazonratings']
     if dataset.endswith("-link"):
         dataset = dataset[:-5]
         link = True
@@ -64,6 +64,8 @@ def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
     data.meta_class_emb = meta_class_emb
     m_size = data.x.size(0)
     ## the following is for downstream tasks
+    if hasattr(data, 'rating_to_label'):
+        del data.rating_to_label
     if not link:
         if hasattr(data, "train_mask"):
             if isinstance(data.train_mask, list):
@@ -100,16 +102,16 @@ def unify_dataset_loader(dataset_names, args):
         if level == 'node':
             data = load_one_tag_dataset(d, args.tag_data_path)
             output_path = osp.join(args.cache_data_path, d)
-            dataset = NodeSubgraphDataset(data, output_path, args.subgraph_size, name=d, sample=args.sample, split_mode=args.split_mode)
+            dataset = NodeSubgraphDataset(data, output_path, args.subgraph_size, name=d, sample=args.sample, split_mode=args.split_mode, few_shot=args.fewshot)
             ds.append(dataset)
         elif level == 'link':
             data = load_one_tag_dataset(d, args.tag_data_path)
             clear_d = d.split('-')[0]
             output_path = osp.join(args.cache_data_path, clear_d)
-            dataset = LinkSubgraphDataset(data, output_path, args.subgraph_size, name=d, split_mode=args.split_mode)
+            dataset = LinkSubgraphDataset(data, output_path, args.subgraph_size, name=d, split_mode=args.split_mode, few_shot=args.fewshot)
             ds.append(dataset)
         elif level == 'graph':
-            dataset = GraphSubgraphDataset(d, args.sb, args.tag_data_path, task_dim)
+            dataset = GraphSubgraphDataset(d, args.sb, args.tag_data_path, task_dim, few_shot=args.fewshot)
             ds.append(dataset)
         else:
             raise ValueError(f"Unknown dataset level: {level}")
@@ -117,7 +119,4 @@ def unify_dataset_loader(dataset_names, args):
 
 
 
-def segments_data_loader(segment_path):
-    all_files = os.listdir(mag240m_segments_path)
-    all_files = sorted(all_files)
     

@@ -27,6 +27,78 @@ def keep_attrs_for_data(data):
     return data
 
 
+class LabelPerClassSplit(object):
+    """
+    Class for splitting data into training, validation, and test sets based on labels.
+
+    This class provides a callable object for splitting data into training, validation, and test sets.
+    The splitting is done based on the labels of the data, with a specified number of labels per class for the training set.
+    """
+    def __init__(
+            self,
+            num_labels_per_class: int = 20,
+            num_valid: int = 500,
+            num_test: int = 1000,
+            inside_old_mask: bool = False
+    ):
+        """
+        Constructor method for the LabelPerClassSplit class.
+
+        Initializes a new instance of the LabelPerClassSplit class with the provided parameters.
+
+        Parameters:
+        num_labels_per_class (int, optional): The number of labels per class for the training set. Defaults to 20.
+        num_valid (int, optional): The number of validation data points. Defaults to 500.
+        num_test (int, optional): The number of test data points. If -1, all remaining data points after training and validation are used for testing. Defaults to -1.
+        inside_old_mask (bool, optional): Whether to consider only data points inside the old mask for splitting. Defaults to False.
+
+        Returns:
+        None
+        """
+        self.num_labels_per_class = num_labels_per_class
+        self.num_valid = num_valid
+        self.num_test = num_test
+        self.inside_old_mask = inside_old_mask
+
+    def __call__(self, y, total_num):
+        """
+        Callable method for the LabelPerClassSplit class.
+
+        This method splits the data into training, validation, and test sets based on the labels of the data.
+
+        Parameters:
+        data: The data to be split.
+        total_num (int): The total number of data points.
+
+        Returns:
+        tuple: A tuple containing the masks for the training, validation, and test sets.
+        """
+        new_train_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_val_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_test_mask = torch.zeros(total_num, dtype=torch.bool)
+
+        perm = torch.randperm(total_num)
+        train_cnt = np.zeros(y.max().item() + 1, dtype=np.int32)
+
+        for i in range(perm.numel()):
+            label = y[perm[i]]
+            if train_cnt[label] < self.num_labels_per_class:
+                train_cnt[label] += 1
+                new_train_mask[perm[i]] = 1
+            elif new_val_mask.sum() < self.num_valid:
+                new_val_mask[perm[i]] = 1
+            else:
+                if new_test_mask.sum() < self.num_test:
+                    new_test_mask[perm[i]] = 1
+                else:
+                    break
+        
+        if self.num_test == -1:
+            new_test_mask = ~new_train_mask & ~new_val_mask
+
+        return new_train_mask, new_val_mask, new_test_mask
+
+
 class SubgraphDataset(InMemoryDataset, ABC):
     @abstractmethod
     def build(self):
@@ -43,14 +115,16 @@ class SubgraphDataset(InMemoryDataset, ABC):
         """
 
 
-class SegmentsDataset(SubgraphDataset):
-    def __init__(segments_path, topk=2048):
-        pass
-
+def update_few_shot_train_mask(y, num_labels_per_class = 3):
+    splitter = LabelPerClassSplit(num_labels_per_class=num_labels_per_class)
+    num_nodes = y.size(0)
+    y = y.to(torch.long)
+    train_mask, _, _ = splitter(y, num_nodes)
+    return train_mask
 
 
 class NodeSubgraphDataset(SubgraphDataset):
-    def __init__(self, data, output_path, topk=50, alpha=0.85, eps=1e-9, name = 'cora', sample = 1, split_mode = 'subgraph'):
+    def __init__(self, data, output_path, topk=50, alpha=0.85, eps=1e-9, name = 'cora', sample = 1, split_mode = 'subgraph', few_shot = False):
         ## Split can be either subgraph or graphsaint
         super(NodeSubgraphDataset, self).__init__()
         self.link = 'node'
@@ -75,6 +149,9 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.saint_loader = None
         self.train_loader = None
         self.test_loader = None
+        if few_shot:
+            self.data.train_mask = update_few_shot_train_mask(data.y)
+            self.train_mask = self.data.train_mask
         self.build() 
 
     def build(self, time='train'):
@@ -117,7 +194,7 @@ class NodeSubgraphDataset(SubgraphDataset):
     
 
 class LinkSubgraphDataset(SubgraphDataset):
-    def __init__(self, data, output_path, topk=50, alpha=0.85, eps=1e-9, name = 'cora', train_ratio=.7, val_ratio=.1, sample=1, split_mode='subgraph'):
+    def __init__(self, data, output_path, topk=50, alpha=0.85, eps=1e-9, name = 'cora', train_ratio=.7, val_ratio=.1, sample=1, split_mode='subgraph', few_shot=False):
         super().__init__()
         self.level = 'link'
         self.name = name
@@ -191,7 +268,7 @@ class LinkSubgraphDataset(SubgraphDataset):
             return DataLoader([self.data], batch_size=1, shuffle=False)
 
 class GraphSubgraphDataset(SubgraphDataset):
-    def __init__(self, dataset_name, sb_path, mol_cache_path, num_classes = 2, use_llm = True):
+    def __init__(self, dataset_name, sb_path, mol_cache_path, num_classes = 2, use_llm = True, few_shot = False):
         super().__init__()
         self.level = 'graph'
         self.name = dataset_name
@@ -206,15 +283,16 @@ class GraphSubgraphDataset(SubgraphDataset):
         self.val_mask = index_to_mask(val_idx, size=self.num_nodes)
         self.test_mask = index_to_mask(test_idx, size=self.num_nodes)
         self.num_class = num_classes
-
+        if few_shot:
+            self.train_mask = update_few_shot_train_mask(self.dataset.y)
         
     
     def build(self):
         pass 
 
     
-    def search(self, batch_size = 32, shuffle = False, time='train'):
-        return DataLoader(self.dataset, batch_size=32, shuffle=False)
+    def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
+        return DataLoader(self.dataset, batch_size=batch_size, shuffle=shuffle)
          
     @property
     def num_classes(self):

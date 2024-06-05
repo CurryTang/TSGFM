@@ -51,9 +51,11 @@ def lightning_fit(
         detect_anomaly=detect_anomaly,
         reload_dataloaders_every_n_epochs=reload_freq,
         check_val_every_n_epoch=val_interval,
+        num_sanity_val_steps = 0
     )
-    trainer.fit(model, datamodule=data_module)
-    if load_best:
+    if len(data_module.datasets['train'].data) > 0:
+        trainer.fit(model, datamodule=data_module)
+    if load_best and len(data_module.datasets['train'].data) > 0:
         model.load_state_dict(
             torch.load(trainer.checkpoint_callback.best_model_path)[
                 "state_dict"

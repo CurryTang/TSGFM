@@ -5,6 +5,9 @@ import numpy as np
 from data.ofa_data import OFAPygDataset
 from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.data.download import download_google_url, download_url
+import csv
+import codecs
+
 
 def get_taxonomy(path):
     # read categories and description file
@@ -53,10 +56,39 @@ def get_label_feature(path):
 
 
 
+def clean_csv_utf8_inline(filename):
+    """
+    Removes non-UTF-8 characters from a CSV file, modifying it directly.
+
+    Args:
+        filename: The path to the CSV file to clean.
+    """
+
+    temp_filename = filename + ".tmp"
+
+    with codecs.open(filename, "r", encoding="utf-8", errors="ignore") as infile, \
+         open(temp_filename, "w", encoding="utf-8") as outfile:
+
+        reader = csv.reader(infile)
+        writer = csv.writer(outfile)
+
+        for row in reader:
+            cleaned_row = [cell.encode("utf-8", errors="replace").decode("utf-8") for cell in row]
+            writer.writerow(cleaned_row)
+
+    # Replace original file with the cleaned version
+    infile.close()
+    outfile.close()
+    import os
+    os.remove(filename)
+    os.rename(temp_filename, filename)
+
+
 def get_data(dset):
     cur_path = os.path.dirname(__file__)
     if not os.path.exists(os.path.join(cur_path, "arxiv23.csv")):
         csv_path = download_google_url("1-s1Hf_2koa1DYp_TQvYetAaivK9YDerv", cur_path, "arxiv23.csv")
+        clean_csv_utf8_inline(csv_path)
     else:
         csv_path = os.path.join(cur_path, "arxiv23.csv")
     if not os.path.exists(os.path.join(cur_path, "arxiv23.pt")):

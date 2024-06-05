@@ -61,6 +61,8 @@ def train_buddy(model, optimizer, train_loader, args, device, emb=None):
         else:
             subgraph_features = torch.zeros(data.subgraph_features[indices].shape).to(device)
         node_features = data.x[curr_links].to(device)
+        if args.drop_features:
+            node_features = torch.zeros_like(node_features).to(device)
         degrees = data.degrees[curr_links].to(device)
         if args.use_RA:
             ra_indices = sample_indices[indices]

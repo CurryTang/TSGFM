@@ -15,16 +15,13 @@ pretrain: &pretrain
   eval_set_constructs:
     - stage: train
       split_name: train
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
     - stage: test
-      split_name: train
+      split_name: test
+      dataset: cora_node
 
-arxivall: &arxivall
-  <<: *pretrain
-  dataset: arxivall
-
-productsall: &productsall
-  <<: *pretrain
-  dataset: productsall
 
 
 arxiv: &arxiv
@@ -99,9 +96,45 @@ amazonratings: &amazonratings
   <<: *E2E-node
   dataset: amazonratings
 
+tolokers: &tolokers
+  <<: *E2E-node
+  dataset: tolokers
+
 arxivyear: &arxivyear
   <<: *E2E-node
   dataset: arxivyear
+
+bookhis20: &bookhis20
+  <<: *E2E-node
+  dataset: bookhis20
+
+bookchild20: &bookchild20
+  <<: *E2E-node
+  dataset: bookchild20
+
+elecomp20: &elecomp20
+  <<: *E2E-node
+  dataset: elecomp20
+
+elephoto20: &elephoto20
+  <<: *E2E-node
+  dataset: elephoto20
+
+sportsfit20: &sportsfit20
+  <<: *E2E-node
+  dataset: sportsfit20
+
+products20: &products20
+  <<: *E2E-node
+  dataset: products20
+
+arxiv20: &arxiv20
+  <<: *E2E-node
+  dataset: arxiv20
+
+arxiv2320: &arxiv2320
+  <<: *E2E-node
+  dataset: arxiv2320
 
 mag240m: &mag240m
   <<: *E2E-node
@@ -109,6 +142,19 @@ mag240m: &mag240m
   eval_set_constructs:
     - stage: train
       split_name: train
+
+
+arxivall: &arxivall
+  <<: *pretrain
+  dataset: arxivall
+
+productsall: &productsall
+  <<: *pretrain
+  dataset: productsall
+
+sportsfitall: &sportsfitall
+  <<: *pretrain
+  dataset: sportsfitall
 
 logic_arxiv:
   <<: *E2E-node
@@ -203,6 +249,16 @@ pubmed_link: &pubmed_link
       split_name: train
       dataset: pubmed_link
 
+pubmed_link_zero_shot: &pubmed_link_zero_shot
+  <<: *E2E-link
+  dataset: pubmed_link
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: pubmed_link_eval
+    - stage: test
+      split_name: test
+      dataset: pubmed_link_eval
 
 citeseer_link: &citeseer_link
   <<: *E2E-link
@@ -292,6 +348,24 @@ chemblpre: &chemblpre
     - stage: train
       split_name: train
       dataset: chemblpre
+    - stage: valid
+      split_name: valid
+      dataset: chemhiv 
+    - stage: test
+      split_name: test
+      dataset: chemhiv
+    - stage: test
+      split_name: test
+      dataset: cora_node 
+    - stage: test
+      split_name: test
+      dataset: bookhis
+    - stage: test
+      split_name: test
+      dataset: pubmed_link
+    - stage: test
+      split_name: test
+      dataset: amazonratings
     # - stage: valid
     #   split_name: valid
     #   dataset: chempcba_eval
@@ -413,27 +487,6 @@ arxiv_fs: &arxiv_fs
     - stage: train
       split_name: train
       dataset: arxiv_fs
-    - stage: valid
-      split_name: valid
-      dataset: arxiv_fs_51
-    - stage: valid
-      split_name: valid
-      dataset: arxiv_fs_53
-    - stage: valid
-      split_name: valid
-      dataset: arxiv_fs_55
-    - stage: valid
-      split_name: valid
-      dataset: cora_fs_21
-    - stage: valid
-      split_name: valid
-      dataset: cora_fs_23
-    - stage: valid
-      split_name: valid
-      dataset: cora_fs_25
-    - stage: valid
-      split_name: valid
-      dataset: cora_fs_71
     - stage: valid
       split_name: valid
       dataset: cora_fs_73
@@ -558,3 +611,185 @@ arxivcorafs: &arxivcorafs
     - stage: test
       split_name: test
       dataset: cora_fs_70
+
+fstest: &fstest
+  <<: *LR-node
+  dataset: arxiv
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_70
+    - stage: test
+      split_name: test
+      dataset: cora_fs_70
+
+zero_shot_orig: &zero_shot_orig
+  <<: *LR-node
+  dataset: arxiv
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: cora_node
+    - stage: test
+      split_name: test
+      dataset: cora_node
+    - stage: test
+      split_name: test
+      dataset: bookhis
+    - stage: test
+      split_name: test
+      dataset: arxiv23
+    - stage: test
+      split_name: test
+      dataset: pubmed_link
+    - stage: test
+      split_name: test
+      dataset: amazonratings
+    - stage: test
+      split_name: test
+      dataset: chemhiv
+
+low_cora_orig: &low_cora_orig
+  <<: *E2E-node
+  dataset: cora
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: cora_node_low
+    - stage: valid
+      split_name: valid
+      dataset: cora_node_low
+    - stage: test
+      split_name: test
+      dataset: cora_node_low
+
+bookhis_orig: &bookhis_orig
+  <<: *E2E-node
+  dataset: bookhis
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: bookhis_low
+    - stage: valid
+      split_name: valid
+      dataset: bookhis_low
+    - stage: test
+      split_name: test
+      dataset: bookhis_low
+
+arxiv23_orig: &arxiv23_orig
+  <<: *E2E-node
+  dataset: arxiv23
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: arxiv23_low
+    - stage: valid
+      split_name: valid
+      dataset: arxiv23_low
+    - stage: test
+      split_name: test
+      dataset: arxiv23_low
+
+chemhiv_orig: &chemhiv_orig
+  <<: *E2E-node
+  dataset: chemhiv
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: chemhiv_low
+    - stage: valid
+      split_name: valid
+      dataset: chemhiv_low
+    - stage: test
+      split_name: test
+      dataset: chemhiv_low
+
+amazonratings_orig: &amazonratings_orig
+  <<: *E2E-node
+  dataset: amazonratings
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: amazonratings_low
+    - stage: valid
+      split_name: valid
+      dataset: amazonratings_low
+    - stage: test
+      split_name: test
+      dataset: amazonratings_low
+
+
+low_cora_test: &low_cora_test
+  <<: *LR-node
+  dataset: cora
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: cora_lr
+    - stage: test
+      split_name: test
+      dataset: cora_lr
+
+
+pre_train_fs: &pre_train_fs
+  <<: *LR-node
+  dataset: arxiv_fs
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+      dataset: arxiv_fs
+    - stage: train
+      split_name: train
+      dataset: products_fs
+    - stage: train
+      split_name: train
+      dataset: sportsfit_fs
+    - stage: valid
+      split_name: valid
+      dataset: cora_fs_70
+    - stage: test
+      split_name: test
+      dataset: cora_fs_70
+    - stage: test
+      split_name: test
+      dataset: cora_fs_73
+    - stage: test
+      split_name: test 
+      dataset: bookhis_fs
+    - stage: test
+      split_name: test
+      dataset: bookhis_fs_120
+    - stage: test
+      split_name: test
+      dataset: amazonratings_fs
+    - stage: test
+      split_name: test
+      dataset: amazonratings_fs_50
+
+LR-graph: &LR-graph
+  eval_pool_mode: mean
+  eval_set_constructs:
+    - stage: train
+      split_name: train
+    - stage: valid
+      split_name: valid
+    - stage: test
+      split_name: test
+    - stage: test
+      split_name: train
+
+mol_fs: &mol_fs
+  <<: *LR-graph
+  dataset: chemhive_fs
+  eval_set_constructs:
+    - stage: valid
+      split_name: valid
+      dataset: chemhiv_fs_20
+    - stage: test
+      split_name: test
+      dataset: chemhiv_fs_20
+    - stage: test
+      split_name: test
+      dataset: chemhiv_fs_23
+

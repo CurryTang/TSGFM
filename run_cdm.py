@@ -31,6 +31,7 @@ from utils import (
 )
 
 from task_constructor import UnifiedTaskConstructor
+import wandb
 
 def replace_walk_length_values(data, val):
   """
@@ -48,6 +49,7 @@ def replace_walk_length_values(data, val):
         replace_walk_length_values(value, val) 
 
 def main(params):
+    wandb.log({'params': params.__dict__})
     encoder = SentenceEncoder(params.llm_name, root="/localscratch/chenzh85", batch_size=params.llm_b_size)
     task_config_lookup = load_yaml(
         os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
@@ -213,9 +215,13 @@ def main(params):
     exp_config.val_state_name = val_state
     exp_config.test_state_name = test_state
 
+    ## wandb.log({'params': params.__dict__})
+
+    
+
     pred_model = GraphPredLightning(exp_config, model, metrics)
     if params.gnn_load_path != "none":
-        pred_model = GraphPredLightning.load_from_checkpoint(params.gnn_load_path, model=model, config=exp_config, metrics=metrics)
+        pred_model = GraphPredLightning.load_from_checkpoint(params.gnn_load_path, model=model, exp_config=exp_config, eval_kit=metrics)
 
     wandb_logger = WandbLogger(
         project=params.log_project,
@@ -283,4 +289,5 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
     params.log_project = "full_cdm"
     print(params)
+    wandb.init(project=params.log_project, name=params.exp_name)
     main(params)

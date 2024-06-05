@@ -58,6 +58,8 @@ class LlagaMetaModel:
 
     def initialize_graph_modules(self, model_args, fsdp=None):
         pretrain_mm_mlp_adapter = getattr(model_args, 'pretrain_mm_mlp_adapter', None)
+        if pretrain_mm_mlp_adapter.lower() == 'none':
+            pretrain_mm_mlp_adapter = None
 
         self.config.use_mm_proj = True
         self.config.mm_projector_type = getattr(model_args, 'mm_projector_type', 'linear')

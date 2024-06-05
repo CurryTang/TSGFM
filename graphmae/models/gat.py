@@ -71,7 +71,7 @@ class GAT(nn.Module):
     
         self.head = nn.Identity()
 
-    def forward(self, x, edge_index, return_hidden=False):
+    def forward(self, x, edge_index, edge_attr = None, return_hidden=False, batch = None):
         h = x
         hidden_list = []
         for l in range(self.num_layers):

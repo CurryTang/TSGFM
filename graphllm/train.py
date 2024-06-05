@@ -26,6 +26,78 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+
+class LabelPerClassSplit(object):
+    """
+    Class for splitting data into training, validation, and test sets based on labels.
+
+    This class provides a callable object for splitting data into training, validation, and test sets.
+    The splitting is done based on the labels of the data, with a specified number of labels per class for the training set.
+    """
+    def __init__(
+            self,
+            num_labels_per_class: int = 20,
+            num_valid: int = 500,
+            num_test: int = 1000,
+            inside_old_mask: bool = False
+    ):
+        """
+        Constructor method for the LabelPerClassSplit class.
+
+        Initializes a new instance of the LabelPerClassSplit class with the provided parameters.
+
+        Parameters:
+        num_labels_per_class (int, optional): The number of labels per class for the training set. Defaults to 20.
+        num_valid (int, optional): The number of validation data points. Defaults to 500.
+        num_test (int, optional): The number of test data points. If -1, all remaining data points after training and validation are used for testing. Defaults to -1.
+        inside_old_mask (bool, optional): Whether to consider only data points inside the old mask for splitting. Defaults to False.
+
+        Returns:
+        None
+        """
+        self.num_labels_per_class = num_labels_per_class
+        self.num_valid = num_valid
+        self.num_test = num_test
+        self.inside_old_mask = inside_old_mask
+
+    def __call__(self, data, total_num):
+        """
+        Callable method for the LabelPerClassSplit class.
+
+        This method splits the data into training, validation, and test sets based on the labels of the data.
+
+        Parameters:
+        data: The data to be split.
+        total_num (int): The total number of data points.
+
+        Returns:
+        tuple: A tuple containing the masks for the training, validation, and test sets.
+        """
+        new_train_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_val_mask = torch.zeros(total_num, dtype=torch.bool)
+        new_test_mask = torch.zeros(total_num, dtype=torch.bool)
+
+        perm = torch.randperm(total_num)
+        train_cnt = np.zeros(data.y.max().item() + 1, dtype=np.int32)
+
+        for i in range(perm.numel()):
+            label = data.y[perm[i]]
+            if train_cnt[label] < self.num_labels_per_class:
+                train_cnt[label] += 1
+                new_train_mask[perm[i]] = 1
+            elif new_val_mask.sum() < self.num_valid:
+                new_val_mask[perm[i]] = 1
+            else:
+                if new_test_mask.sum() < self.num_test:
+                    new_test_mask[perm[i]] = 1
+                else:
+                    break
+        
+        if self.num_test == -1:
+            new_test_mask = ~new_train_mask & ~new_val_mask
+
+        return new_train_mask, new_val_mask, new_test_mask
+
 local_rank = None
 
 
@@ -44,6 +116,7 @@ class ModelArguments:
     mm_projector_type: Optional[str] = field(default='linear')
     mm_use_graph_start_end: bool = field(default=False)
     mm_use_graph_patch_token: bool = field(default=True)
+    ## model_base: Optional[str] = field(default=None)
 
 
 @dataclass
@@ -59,6 +132,7 @@ class DataArguments:
     data_saved_path: Optional[str] = field(default="cache_data_minilm")
     category: Optional[str] = field(default="paper")
     node_centered: Optional[bool] = field(default=True)
+    fewshot: Optional[str] = field(default="no")
 
 
 
@@ -430,9 +504,18 @@ def set_label_names(data, label_csv_path):
     label_pd = pd.read_csv(label_csv_path)
     if hasattr(data, 'label_names'):
         return data
-    label_names = label_pd['name'].tolist()
+    if 'ratings' in label_csv_path:
+        label_names = label_pd['description'].tolist()
+    else:
+        label_names = label_pd['name'].tolist()
     data.label_names = label_names
     return data
+
+def set_few_shot_train_mask(data, num_train_per_class = 3):
+    splitter = LabelPerClassSplit(num_train_per_class)
+    total_num = data.y.size(0)
+    train_mask, _, _ = splitter(data, total_num)
+    return train_mask
 
 class LazySupervisedGraphDataset(Dataset):
     """Dataset for supervised fine-tuning."""
@@ -497,6 +580,7 @@ class LazySupervisedGraphDataset(Dataset):
             self.structure_emb = None
             self.pretrained_embs[dataset] = pretrained_emb
             self.use_task = data_args.use_task.split('-')
+            label_per_class = [0 for _ in range(len(data.label_names))]
             for task in self.use_task:
                 task_list_data_dict = []
                 if task == "nc":
@@ -513,6 +597,14 @@ class LazySupervisedGraphDataset(Dataset):
                                 l['conversations'] = []
                                 l['conversations'].append(human_conv)
                                 l['conversations'].append(gpt_conv)
+                                if data_args.fewshot == 'yes':
+                                    curr = data.y[node_idx]
+                                    if label_per_class[curr] >= 3:
+                                        continue
+                                    else:
+                                        label_per_class[curr] += 1
+                                if min(label_per_class) >= 3:
+                                    break
                                 task_list_data_dict.append(l)
                     else:
                         raise ValueError

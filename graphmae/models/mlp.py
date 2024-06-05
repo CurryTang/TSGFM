@@ -12,7 +12,8 @@ class MLP(nn.Module):
                  dropout,
                  activation,
                  norm,
-                 encoding=False
+                 encoding=False,
+                 residual = False
                  ):
         super().__init__()
         self.out_dim = out_dim
@@ -31,7 +32,7 @@ class MLP(nn.Module):
         else:
             # input projection (no residual)
             self.mlp_layers.append(MLPLayer(
-                in_dim, num_hidden, residual=residual, norm=norm, activation=create_activation(activation)))
+                in_dim, num_hidden, norm=norm, activation=create_activation(activation)))
             # hidden layers
             for l in range(1, num_layers - 1):
                 self.mlp_layers.append(MLPLayer(
@@ -47,7 +48,7 @@ class MLP(nn.Module):
         hidden_list = []
         for l in range(self.num_layers):
             h = F.dropout(h, p=self.dropout, training=self.training)
-            h = self.mlp_layers[l](g, h)
+            h = self.mlp_layers[l](h)
             if self.norms is not None and l != self.num_layers - 1:
                 h = self.norms[l](h)
             hidden_list.append(h)

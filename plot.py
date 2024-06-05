@@ -45,6 +45,8 @@ def info_from_data(ofa_g, sample_x = 100, do_mp = False):
     """
     node_features = ofa_g.g.node_text_feat
     class_emb = ofa_g.class_emb
+    
+    
 
     if do_mp:
         edge_index = ofa_g.g.edge_index

@@ -10,7 +10,13 @@ from graphmae.data_util import unify_dataset_loader
 from ogb.nodeproppred import Evaluator
 from torch_geometric.utils import mask_to_index
 from torch_geometric import seed_everything
+from task_constructor import LabelPerClassSplit
 
+def set_few_shot_train_mask(data, num_train_per_class = 3):
+    splitter = LabelPerClassSplit(num_train_per_class)
+    total_num = data.y.size(0)
+    train_mask, _, _ = splitter(data, total_num)
+    return train_mask
 
 class GCN(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers,
@@ -131,6 +137,8 @@ def main():
     data.adj_t = data.adj_t.to_symmetric()
     data = data.to(device)
     data.y = data.y.view(-1, 1)
+    if args.fewshot:
+        dataset.train_mask = set_few_shot_train_mask(dataset.data, 3)
 
     split_idx = mask2splitidx([dataset.train_mask, dataset.val_mask, dataset.test_mask])
 

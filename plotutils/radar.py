@@ -2,7 +2,7 @@ import numpy as np
 import textwrap
 import math
 import matplotlib.pyplot as plt
-
+import matplotlib
 
 COLORS = [
     "#e01009",
@@ -31,8 +31,8 @@ default_format_cfg = {
     'outer_ring': {'visible':True},
     'angle_ln_args':{'visible':True},
     'outer_ring': {'visible':True, 'linestyle':'dotted'},
-    'rgrid_tick_lbls_args': {'fontsize':12},
-    'theta_tick_lbls': {'fontsize':15},
+    'rgrid_tick_lbls_args': {'fontsize':24},
+    'theta_tick_lbls': {'fontsize':24, 'weight':'bold'},
     'theta_tick_lbls_pad':3
 }
 
@@ -65,7 +65,7 @@ class ComplexRadar():
             'axes_args': {},
             # Tick labels on the scales
             # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.rgrids.html
-            'rgrid_tick_lbls_args': {'fontsize':8},
+            'rgrid_tick_lbls_args': {'fontsize':14},
             # Radial (circle) lines
             # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.grid.html
             'rad_ln_args': {},
@@ -112,7 +112,7 @@ class ComplexRadar():
             # Set endpoint to True if you like to have values right before the last circle
             grid = np.linspace(*ranges[j], num=n_ring_levels, 
                                endpoint=self.format_cfg['incl_endpoint'])
-            gridlabel = ["{}".format(round(x,2)) for x in grid]
+            gridlabel = ["{}".format(round(x)) for x in grid]
             gridlabel[0] = "" # remove values from the center
             lines, labels = ax.set_rgrids(grid, 
                                           labels=gridlabel, 
@@ -206,7 +206,7 @@ class ComplexRadar():
 
 
 
-def generate_radar_plots(data_df, min_shift = 5, max_shift = 0, format_cfg = default_format_cfg, legend_size = 8, bbox_pos = (0, -0.1)):
+def generate_radar_plots(data_df, min_shift = 5, max_shift = 0, format_cfg = default_format_cfg, legend_size = 8, bbox_pos = (0, -0.1), name="example"):
     methods = data_df['methods'].to_numpy()
     real_data = data_df.iloc[:, 1:]
     min_max_per_variable = real_data.describe().T[['min', 'max']]
@@ -217,14 +217,22 @@ def generate_radar_plots(data_df, min_shift = 5, max_shift = 0, format_cfg = def
     ranges = list(min_max_per_variable.itertuples(index=False, name=None))  
     ranges = [(x - min_shift, y + max_shift) for x, y in ranges]
 
-    fig1 = plt.figure(figsize=(8, 8))
+    fig1 = plt.figure(figsize=(11, 8))
     radar = ComplexRadar(fig1, variables, ranges,n_ring_levels=3 ,show_scales=True, format_cfg=format_cfg)
 
     for g,c in zip(real_data.index, COLORS):
         radar.plot(real_data.loc[g].values, label=f"{methods[g]}", color=c, marker=SIGNS[g], markersize=12)
 
     radar.use_legend(**{'loc':'lower left', 'bbox_to_anchor': bbox_pos, 'ncol':radar.plot_counter, 'prop': {'size': legend_size, 'weight':'bold'}})
-
+    #plt.tight_layout()
     plt.show()
+    fig1.savefig(f'{name}.png',dpi=plt.gcf().dpi, bbox_inches='tight')
+    fig1.savefig(f'{name}.pdf', dpi=plt.gcf().dpi, 
+                 bbox_inches='tight')
+    return fig1
+    
+    
+    
+    
 
     

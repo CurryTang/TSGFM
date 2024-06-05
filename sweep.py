@@ -59,10 +59,31 @@ if __name__ == "__main__":
                 "scheduler": {"values": [True, False]},
                 "norm": {"values": ["layernorm", "batchnorm", None]},
                 "lrtype": {"values": ["lambda", "cosine"]},
-                "residual": {"values": [True, False]}
+                "residual": {"values": [True, False]},
+                "encoder": {"values": ["gat", "gcn"]},
             },
         }
-    elif args.mode == 'subgcon':
+    elif args.method == 'bgrl':
+        sweep_configuration = {
+            "method": "random",
+            "metric": {"goal": "maximize", "name": "avg_test"},
+            "parameters": {
+                "num_hidden": {"values": [64, 128, 256, 512, 1024]},
+                "activation": {"values": ["relu", "prelu", "elu"]},
+                "in_drop": {"values": [0.0, 0.2, 0.5]},
+                "attn_drop": {"values": [0.0, 0.2, 0.5]},
+                "lr": {"values": [0.001, 0.005, 0.01]},
+                "weight_decay": {"values": [0.0, 0.001, 5e-4, 1e-5]},
+                "num_layers": {"values": [2, 3]},
+                "scheduler": {"values": [True, False]},
+                "norm": {"values": ["layernorm", "batchnorm", None]},
+                "lrtype": {"values": ["lambda", "cosine"]},
+                "residual": {"values": [True, False]},
+                "pe": {"values": [0.1, 0.2, 0.5]},
+                "pf": {"values": [0.1, 0.2, 0.5]}
+            },
+        }
+    elif args.method == 'subgcon':
         sweep_configuration = {
             "method": "random",
             "metric": {"goal": "maximize", "name": "avg_test"},
@@ -89,6 +110,6 @@ if __name__ == "__main__":
         }
 
     # 3: Start the sweep
-    sweep_id = wandb.sweep(sweep=sweep_configuration, project=f"GFM-{args.pre_train_datasets}-{args.encoder}"[:75])
+    sweep_id = wandb.sweep(sweep=sweep_configuration, project=f"{args.method}-GFM-{args.pre_train_datasets}-{args.encoder}"[:75])
 
     wandb.agent(sweep_id, function=lambda: main(args), count=args.count)

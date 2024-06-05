@@ -11,22 +11,25 @@ from torch_geometric.nn import global_mean_pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
 from graphmae.models import build_model, TaskHeadModel, build_model_backbone
-from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test
+from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test, zero_shot_eval
 from graphmae.models.gcn import GNN_node
-from subgcon.ssl import DGIEncoder, dgi_train_step
+from graphmae.models.gcnvn import GNN_node_Virtualnode as GCNVN
+from graphmae.models import build_model
+from subgcon.ssl import DGIEncoder, dgi_train_step, BGRLEncoder, bgrl_train_step
+from GCL.models import BootstrapContrast
+import GCL.augmentors as A
 import logging
-import os.path as osp
-from tqdm import tqdm
 from graphmae.config import DATASET
 from ogb.linkproppred.evaluate import Evaluator
 import pytorch_warmup as warmup
-from torch_geometric.nn.models import GCN
 from GCL.models import SingleBranchContrast
 import GCL.losses as L
+from prompt_graph.pretrain import Edgepred_GPPT, Edgepred_Gprompt
 
 def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None, warmup_scheduler = None, contrast_model = None):
     # Model training
     model.train()
+    model = model.to(device)
     optimizer.zero_grad()
     avg_loss = 0
     ce_loss = torch.nn.CrossEntropyLoss()
@@ -40,9 +43,13 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
         elif model_type == 'gcc':
             pass 
         elif model_type == 'bgrl':
-            pass
+            batch = batch.to(device)
+            loss = bgrl_train_step(model, contrast_model, batch, optimizer)
         elif model_type == 'graphmae':
-            loss, loss_item = model(batch.x.to(device), batch.edge_index.to(device))
+            if not hasattr(batch, 'batch') or not hasattr(batch, 'xe'):
+                loss, loss_item = model(batch.x.to(device), batch.edge_index.to(device))
+            else:
+                loss, loss_item = model(batch.x.to(device), batch.edge_index.to(device), batch.xe.to(device), batch.batch.to(device))
         elif model_type == 'cotrain':
             ## mask and head_name should be provided for this case
             output = model(batch.x.to(device), batch.edge_index.to(device), head_name)
@@ -50,6 +57,8 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+        if model_type == 'bgrl':
+            model.update_target_encoder(0.99)
     if scheduler is not None:
         if warmup_scheduler is None:
             scheduler.step()
@@ -62,6 +71,7 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
 def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln='subgcon'):
     # Obtain central node embs from subgraphs 
     model.eval()
+    model = model.to(device)
     z = []
     size = len(loader)
     for batch in loader:
@@ -75,6 +85,14 @@ def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln
                 node = node[index]
             else:
                 node = node
+        elif modeln == 'bgrl':
+            h1, h2, _, _, _, _ = model(batch.x.to(device), batch.edge_index.to(device))
+            out = torch.cat([h1, h2], dim=1)
+            if size > 1:
+                node = out[index]
+            else:
+                node = out
+            graph = global_mean_pool(out, batch.batch.to(device))
         elif modeln == 'graphmae':
             # import ipdb; ipdb.set_trace()
             out = model.embed(batch.x.to(device), batch.edge_index.to(device))
@@ -130,6 +148,19 @@ def graph_level_test(model, dataset, loader, args, device):
     return val_acc, test_acc
 
 
+def zero_shot_test(model, dataset, loader, args, device, level):
+    model.eval()
+    with torch.no_grad():
+        z = get_all_node_emb(model, 1, loader, args, device, level = level, modeln=args.method)
+    if level == 'link':
+        evaluator = Evaluator(name='ogbl-ppa')
+    else:
+        evaluator = None
+    dataset.data.num_classes = dataset.data.y.max().item() + 1
+    val_acc, test_acc = zero_shot_eval(z, dataset, device, evaluator, mode=level, m_name=DATASET[dataset.name]['metric'])
+    print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
+    return val_acc, test_acc
+
 def test(model, dataset, loader, args, device, level='node'):
     if level == 'node':
         return node_level_test(model, dataset, loader, args, device)
@@ -139,7 +170,9 @@ def test(model, dataset, loader, args, device, level='node'):
         return graph_level_test(model, dataset, loader, args, device)
 
 
+
 def main(args):
+    logging.info(args)
     use_scheduler = args.scheduler
     batch_size = args.batch_size
     if args.device < 0:
@@ -152,7 +185,11 @@ def main(args):
     max_epochs = args.max_epoch
     use_scheduler = args.scheduler
     ## select method
-    if args.method == 'graphmae':
+    if args.method == 'gppt':
+        model = Edgepred_GPPT(dataset_name = args.pre_train_datasets, gnn_type = args.encoder, hid_dim = args.num_hidden, gln = args.num_layers, num_epoch=args.epochs, device=args.device)
+    elif args.method == 'gprompt':
+        model = Edgepred_Gprompt(dataset_name = args.pre_train_datasets, gnn_type = args.encoder, hid_dim = args.num_hidden, gln = args.num_layers, num_epoch=args.epochs, device=args.device)
+    elif args.method == 'graphmae':
         model = build_model(args).to(device)
         contrast_model = None
     elif args.method == 'dgi':
@@ -163,6 +200,11 @@ def main(args):
         ).to(device)
     elif args.method == 'bgrl':
         model = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
+        aug1 = A.Compose([A.EdgeRemoving(pe=args.pe), A.FeatureMasking(pf=args.pf)])
+        aug2 = A.Compose([A.EdgeRemoving(pe=args.pe), A.FeatureMasking(pf=args.pf)])
+        model = BGRLEncoder(model, augmentor=(aug1, aug2), hidden_dim=args.num_hidden, dropout=args.in_drop, predictor_norm=args.norm).to(device)
+        contrast_model = BootstrapContrast(
+            loss=L.BootstrapLatent(), mode='L2L').to(device)
     elif args.method == 'gcc':
         model = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
     elif args.method == 'cotrain':
@@ -170,6 +212,9 @@ def main(args):
         contrast_model = None
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))
+    if args.load_model:
+        model.load_state_dict(torch.load(args.load_model))
+        model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     if use_scheduler:
         if args.lrtype == 'lambda':
@@ -198,20 +243,26 @@ def main(args):
     val_accs = []
     test_accs = []
     
+    saved_model_name = f"{args.method}-{args.encoder}-{args.decoder}-{args.pre_train_datasets}.pt"
+
+    if args.eval_only:
+        max_epochs = 1
 
     for e in range(max_epochs):
+        if not args.eval_only:
         ## pre-train stage
-        for i, G in enumerate(datas):
-            train_loader = G.search(batch_size = batch_size, shuffle = True, time='train', infmode='cpu' if args.cpuinf else 'gpu')
-            loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, warmup_scheduler=warmup_scheduler, contrast_model = contrast_model)
-            logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
+            for i, G in enumerate(datas):
+                train_loader = G.search(batch_size = batch_size, shuffle = True, time='train', infmode='cpu' if args.cpuinf else 'gpu')
+                loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, warmup_scheduler=warmup_scheduler, contrast_model = contrast_model)
+                logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
         ## evaluation part
         eval_val = []
         eval_test = []
         for i, G in enumerate(datas):
             test_loader = G.search(batch_size = batch_size, shuffle = False, time='test', infmode='cpu' if args.cpuinf else 'gpu')
 
-            val_res, test_res = test(model, G, test_loader, args, device, level = DATASET[args.pre_train_datasets[i]]['level'])
+            this_level = DATASET[args.pre_train_datasets[i]]['level']
+            val_res, test_res = test(model, G, test_loader, args, 'cpu' if args.cpuinf else 'cuda', level = this_level)
             eval_val.append(val_res)
             eval_test.append(test_res)
         for i in range(len(datas)):
@@ -221,6 +272,8 @@ def main(args):
             best_avg_val = avg_val
             val_accs = eval_val
             test_accs = eval_test
+            if args.save_model:
+                torch.save(model.state_dict(), saved_model_name)
     logging.info("Best Avg Val {}".format(best_avg_val))
     for i in range(len(datas)):
         logging.info("Dataset: {} Best Val {} Test {}".format(args.pre_train_datasets[i], val_accs[i], test_accs[i]))

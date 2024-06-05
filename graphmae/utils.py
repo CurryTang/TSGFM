@@ -113,8 +113,8 @@ def build_args():
     parser.add_argument("--weight_decay_f", type=float, default=0.0, help="weight decay for evaluation")
     parser.add_argument("--linear_prob", action="store_true", default=True)
     
-    parser.add_argument("--load_model", action="store_true")
-    parser.add_argument("--save_model", action="store_true")
+    #parser.add_argument("--load_model", action="store_true")
+    #parser.add_argument("--save_model", action="store_true")
     parser.add_argument("--use_cfg", action="store_true")
     parser.add_argument("--logging", action="store_true")
     parser.add_argument("--scheduler", action="store_true", default=False)
@@ -130,12 +130,19 @@ def build_args():
 
     parser.add_argument("--feature_dim", type=int, default=384)
     parser.add_argument("--sample", default=1., type=float)
-    parser.add_argument("--split_mode", default="subgraph", type=str)
+    parser.add_argument("--split_mode", default="graphsaint", type=str)
     parser.add_argument("--warmup", action="store_true", default=False)
     parser.add_argument("--embed_mode", default="llm", type=str)
     parser.add_argument("--backbone", default="gcn_node", type=str) 
     parser.add_argument("--count", type=int, default=3)
     parser.add_argument("--cpuinf", action="store_true", default=False)
+    parser.add_argument("--pe", type=float, default=0.5)
+    parser.add_argument("--pf", type=float, default=0.1)
+    parser.add_argument("--save_model", action="store_true", default=False)
+    parser.add_argument("--load_model", type=str, default="")
+    parser.add_argument("--zeroshot", action="store_true", default=False)
+    parser.add_argument("--fewshot", action="store_true", default=False)
+    parser.add_argument("--eval_only", action="store_true", default=False)
     args = parser.parse_args()
     return args
 

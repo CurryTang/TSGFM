@@ -13,7 +13,7 @@ from utils import get_label_texts
 
 NAME_TO_SPLIT = {"chemblpre": "chembl_pretraining", "chempcba": "pcba", "chemhiv": "hiv", 
                  "tox21": "tox21", "clintox": "clintox", "sider": "sider", "muv": "muv",
-                 "bace": "bace", "bbbp": "bbbp", "toxcast": "toxcast"}
+                 "bace": "bace", "bbbp": "bbbp", "toxcast": "toxcast", "collab": "collab"}
 
 def load_prompt_json(name):
     if name == "chemblpre":
@@ -104,6 +104,16 @@ def gen_graph(graphs, labels_features):
     ret = (data, [u_node_texts_lst, u_edge_texts_lst, labels_features, prompt_edge_text, prompt_text, ],
            [split, prompt_text_map],)
     return ret
+
+def gen_no_attr_graph(name):
+    if name != "collab":
+        raise NotImplementedError("Only collab dataset is supported now.")
+    
+    
+
+
+class NonAttrOFAData(OFAPygDataset):
+    pass 
 
 
 class MolOFADataset(OFAPygDataset):

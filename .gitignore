@@ -217,3 +217,34 @@ sentence-transformers_*
 
 *.png 
 *.pdf
+
+*.log 
+
+
+exp_results/
+exp_results/*
+# ./*.yaml
+intfloat_e5-mistral-7b-instruct/
+intfloat_e5-mistral-7b-instruct/*
+
+outdata/
+outdata/*
+
+prompt_graph/
+prompt_graph/*
+
+saved_models/
+saved_models/*
+
+
+data/single_graph/amazonratings/categories.csv
+data/single_graph/arxiv23/arxiv23.csv
+data/single_graph/bookchild/children.csv
+data/single_graph/bookhis/history.csv
+data/single_graph/elecomp/elecomp.csv
+data/single_graph/elephoto/elephoto.csv
+data/single_graph/products/products.csv
+data/single_graph/sportsfit/sportsfit.csv
+
+dataset/
+dataset/*

@@ -85,6 +85,7 @@ def run(args):
     emb = None
     model, optimizer = select_model(args, args.input_dim, emb, device)
     val_res = test_res = best_epoch = 0
+    saved_name = []
     for epoch in range(args.epochs):
         data_idx = 0
         print(f'Epoch {epoch}')
@@ -93,33 +94,39 @@ def run(args):
         val_loaders = []
         test_loaders = []
         dataset_names = []
+        
         for dataset, splits, directed, eval_metric, dataset_name in yielder:
             train_loader, train_eval_loader, val_loader, test_loader = get_loaders(args, dataset, splits, directed, dataset_name)
             train_eval_loaders.append(train_eval_loader)
             val_loaders.append(val_loader)
             test_loaders.append(test_loader)
             dataset_names.append(dataset_name)
+            saved_name.append(dataset_name)
             # if rep == 0:
             #     print_model_params(model)
             
             t0 = time.time()
-            loss = train_func(model, optimizer, train_loader, args, device)
-            print(f"Dataset: {dataset_name}, Epoch: {epoch}, Loss: {loss:.4f}, Time: {time.time() - t0:.2f}")
+            if not args.eval_only:
+                loss = train_func(model, optimizer, train_loader, args, device)
+                print(f"Dataset: {dataset_name}, Epoch: {epoch}, Loss: {loss:.4f}, Time: {time.time() - t0:.2f}")
         tmp_val, tmp_test = eval(model, evaluator, train_eval_loaders, val_loaders, test_loaders, dataset_names, args, device, eval_metric='hits', this_epoch = epoch)
         if tmp_val > val_res:
             val_res = tmp_val
             test_res = tmp_test
             best_epoch = epoch
+        if args.eval_only:
+            break
     if args.wandb:
         wandb.finish()
     if args.save_model:
-        path = f'{ROOT_DIR}/saved_models/{args.dataset_name}'
+        saved_name = '_'.join(saved_name)
+        path = f'{ROOT_DIR}/saved_models/{saved_name}'
         torch.save(model.state_dict(), path)
     print(f'Best epoch: {best_epoch}, Val: {val_res:.2f}, Test: {test_res:.2f}')
     return val_res, test_res
 
 
-def select_model(args, num_features, emb, device):
+def select_model(args, num_features, emb, device, load_pretrained=""):
     if args.model == 'GCN':
         model = GCN(args.num_features, args.hidden_channels, args.hidden_channels, args.num_layers, args.dropout).to(device)
     elif args.model == 'BUDDY':
@@ -132,6 +139,8 @@ def select_model(args, num_features, emb, device):
             device)
     else:
         raise NotImplementedError
+    if load_pretrained != "":
+        model.load_state_dict(torch.load(load_pretrained))
     parameters = list(model.parameters())
     if args.train_node_embedding:
         torch.nn.init.xavier_uniform_(emb.weight)
@@ -259,6 +268,10 @@ if __name__ == '__main__':
                         help='list of epochs to log gradient flow')
     parser.add_argument('--log_features', action='store_true', help="log feature importance")
     parser.add_argument("--tag_data_path", type=str, default='./cache_data_minilm')
+    parser.add_argument("--load", type=str, default='')
+    parser.add_argument("--eval_only", action='store_true', default=False)
+    parser.add_argument("--drop_features", action='store_true', default=False)
+    # parser.add_argument("--save", action='store_true', default=False)
     args = parser.parse_args()
     if (args.max_hash_hops == 1) and (not args.use_zero_one):
         print("WARNING: (0,1) feature knock out is not supported for 1 hop. Running with all features")

@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from .gat import GAT
 from .gin import GIN
+from .gcnvn import GNN_node_Virtualnode
 from .loss_func import sce_loss
 from .sgcn import GraphEncoder
 from graphmae.utils import create_norm
@@ -84,6 +85,15 @@ def setup_module(m_type, enc_dec, in_dim, num_hidden, out_dim, num_layers, dropo
             edge_hidden_dim=num_hidden,
             gnn_model='gcn',
             mode=embed_mode
+        )
+    elif m_type == 'gcnvn':
+        mod = GNN_node_Virtualnode(
+            num_layer=num_layers,
+            emb_dim = in_dim,
+            hidden_dim=num_hidden,
+            drop_ratio=dropout,
+            residual=residual,
+            gnn_type='gcn'
         )
     else:
         raise NotImplementedError
@@ -253,25 +263,16 @@ class PreModel(nn.Module):
 
         return out_x, (mask_nodes, keep_nodes)
 
-    def forward(self, x, edge_index, batch = None, index = None):
+    def forward(self, x, edge_index, edge_attr = None, batch = None):
         """
             batch and index are used to fill the position
         """
-        if self.mode == 'nofeat':
-            ## x is positional encoding in this case
-            deg = degree(edge_index[0], x.size(0), dtype=x.dtype)
-            deg = torch.clamp(deg, 0, self.max_degree)
-            deg_emb = self.degree_embedding(deg)
-            x = deg_emb
-        elif self.mode == 'atomencoder':
-            x = self.atom_encoder(x)
-            edge_attr = self.bond_encoder(edge_attr)
         # ---- attribute reconstruction ----
-        loss = self.mask_attr_prediction(x, edge_index)
+        loss = self.mask_attr_prediction(x, edge_index, edge_attr=edge_attr, batch=batch)
         loss_item = {"loss": loss.item()}
         return loss, loss_item
     
-    def mask_attr_prediction(self, x, edge_index, edge_attr=None):
+    def mask_attr_prediction(self, x, edge_index, edge_attr=None, batch=None):
         use_x, (mask_nodes, keep_nodes) = self.encoding_mask_noise(x, self._mask_rate)
 
         if self._drop_edge_rate > 0:
@@ -283,7 +284,7 @@ class PreModel(nn.Module):
             use_edge_index = edge_index
 
 
-        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, return_hidden=True)
+        enc_rep, all_hidden = self.encoder(use_x, use_edge_index, edge_attr, batch=batch, return_hidden=True)
         if self._concat_hidden:
             enc_rep = torch.cat(all_hidden, dim=1)
 

@@ -120,12 +120,14 @@ def average_feature_similarity_heatmap(datasets, dataset_names, similarity_metri
 
             similarity_matrix[i, j] = similarity.mean().item()  # Average similarity
     
-    short_names = [f"{name[:2]}-{name[-1]}" for name in dataset_names]  # Truncate names for display
+    short_names = [f"{name[:6]}" for name in dataset_names]  # Truncate names for display
     # Create Heatmap
     plt.figure(figsize=(8, 8))
     sns.heatmap(similarity_matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=short_names, yticklabels=short_names)
     plt.title(f"Average Pairwise Feature Similarity ({similarity_metric.upper()})")
     plt.xlabel("Dataset")
     plt.ylabel("Dataset")
+    plt.xticks(rotation=30)
+    plt.yticks(rotation=0)  
     plt.savefig(f"heatmap_visualization_{dataset_names}_{mode}.pdf")
     plt.savefig(f"heatmap_visualization_{dataset_names}_{mode}.png")
