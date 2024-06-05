@@ -70,6 +70,31 @@ A comprehensive introduction of each column can be found in OneForAll's repo.
 
 ## Code Structures
 
+### Directories
+
+* `configs`: Directory for setting the task/dataset for OneForAll. Add new datasets here
+* `data`: data utility files/generation files using the OneForAll data interface
+* `gp`: graph utility files from the original OneForAll repo
+* `graphllm`: utility files for LLaGA
+* `graphmae`: utility files for graphmae
+* `link`: utility files for BUDDY
+* `models`: model implementations
+* `prodigy`: prodigy files
+* `subgcon`: utility files/data files for self-supervised learning
+
+### Main entries
+
+* `eval_pretrain_*, eval_res`: main files for LLaGA
+* `fulllink.py`: main files for GCN link prediction
+* `linkpred.py`: main files for BUDDY/SEAL
+* `run_cdm`: main files for OFA
+* `sslmain`: main files for SSL
+* `simplerlr`: main files for simpleSBERT
+
+
+
+
+
 ## Reproduce the results
 
 
