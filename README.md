@@ -97,6 +97,12 @@ A comprehensive introduction of each column can be found in OneForAll's repo.
 
 ## Reproduce the results
 
+### OneForAll
+* Co-training setting: just set up a config file similar to `demo/e2e_all_config.yaml`
+* Pre-training setting: when loading the pre-trained model, use `gnn_load_path`.
+
+### LLaGA
+1. Use 
 
 
 ## Acknowledgements
