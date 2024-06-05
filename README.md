@@ -34,7 +34,6 @@ We follow OneForAll's way of managing the datasets. We support the following dat
 | WikiCS         | 1       | 11701  | 431726   | Knowledge    | Node, Link | 10       |
 | Tolokers       | 1       | 11758  | 1038000  | Anomaly      | Node, Link | 2        |
 | DBLP           | 1       | 14376  | 431326   | CS Citation  | Node, Link | 4        |
-| Collab         | 5000    | 74.49  | 2457.78  | Collabration | Graph      | 3        |
 | CheMBL         | 365065  | 26     | 112      | Biology      | Graph      | 1048     |
 | PCBA           | 437092  | 26     | 56       | Biology      | Graph      | 128      |
 | HIV            | 41127   | 26     | 55       | Biology      | Graph      | 2        |
