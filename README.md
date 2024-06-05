@@ -65,7 +65,7 @@ Structures of the processed files:
 `data.pt` contains the index file used to query the attributes stored in `geometric_data_processed.pt`.
 A comprehensive introduction of each column can be found in OneForAll's repo. 
 
-To prepare the data, it's okay to generate all raw files yourself (run oneforall for 1 epoch, including all datasets). I recommend you use the [preprocessed files]() directly and unzip them to the main directory. 
+To prepare the data, it's okay to generate all raw files yourself (run oneforall for 1 epoch, including all datasets). I recommend you use the [preprocessed files](https://huggingface.co/datasets/zkchen/tsgfm/blob/main/minilmdata.zip) directly and unzip them to the main directory. 
 
 
 ## Code Structures
