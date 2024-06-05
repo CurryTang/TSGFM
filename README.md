@@ -67,4 +67,4 @@ A comprehensive introduction of each column can be found in OneForAll's repo.
 
 ## Acknowledgements
 
-This code repo is heavily based on [OneForAll](https://github.com/LechengKong/OneForAll), [BUDDY](https://github.com/melifluos/subgraph-sketching), [LLaGA](https://github.com/VITA-Group/LLaGA), [GraphMAE](https://github.com/THUDM/GraphMAE), [Prodigy](https://github.com/snap-stanford/prodigy), [CSTAG](https://github.com/sktsherlock/TAG-Benchmark). Thanks for their sharing!
+This code repo is heavily based on [OneForAll](https://github.com/LechengKong/OneForAll)(✨), [BUDDY](https://github.com/melifluos/subgraph-sketching), [LLaGA](https://github.com/VITA-Group/LLaGA), [GraphMAE](https://github.com/THUDM/GraphMAE), [Prodigy](https://github.com/snap-stanford/prodigy), [CSTAG](https://github.com/sktsherlock/TAG-Benchmark). Thanks for their sharing!
