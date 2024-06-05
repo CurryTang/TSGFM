@@ -65,7 +65,7 @@ Structures of the processed files:
 `data.pt` contains the index file used to query the attributes stored in `geometric_data_processed.pt`.
 A comprehensive introduction of each column can be found in OneForAll's repo. 
 
- 
+To prepare the data, it's okay to generate all raw files yourself (run oneforall for 1 epoch, including all datasets). I recommend you use the [preprocessed files]() directly and unzip them to the main directory. 
 
 
 ## Code Structures
@@ -102,7 +102,44 @@ A comprehensive introduction of each column can be found in OneForAll's repo.
 * Pre-training setting: when loading the pre-trained model, use `gnn_load_path`.
 
 ### LLaGA
-1. Use 
+1. Use `llm_train.sh` to generate checkpoints
+2. Use `llm_eval.sh` or `llm_eval_link.sh` to generate the answer files for node/link-level tasks. For example, `bash llm_eval.sh citeseer nc ./checkpoints/llaga-mistral-7b-hf-sbert-4-hop-token-linear-cora.3-citeseer.4-pubmed.3-nc-lp-projector/ citationcross`
+3. Use `llmres.sh` to calculate the results
+
+### GCN-link
+
+```
+python3 fulllink.py --pre_train_datasets "cora-link" "citeseer-link" "pubmed-link" "arxiv-link" "arxiv23-link" "bookhis-link" "bookchild-link" "sportsfit-link" "products-link" "elecomp-link" "elephoto-link" --encoder gcn --num_layers 3 --num_hidden 128 --batch_size 512
+```
+
+### BUDDY/SEAL
+
+```
+python3 linkpred.py --pre_train_datasets cora citeseer arxiv arxiv23 bookhis bookchild elecomp elephoto sportsfit products pubmed wikics --model BUDDY --cache_subgraph_features --max_hash_hops 3 --epochs 50
+```
+
+```
+python3 linkpred.py --pre_train_datasets cora --model SEALGCN --hidden_channels 256 --num_hops 3
+```
+
+### SSL
+
+Check the best hyper-parameter in the paper (use cpuinf can do full-batch inference on CPU, which is faster on our environment)
+```
+python3 sslmain.py --pre_train_datasets arxiv sportsfit products --method graphmae --num_heads 4 --num_out_heads 1 --num_layers 3 --num_hidden 1024 --residual --in_drop 0.5 --attn_drop 0.5 --norm 'batchnorm' --lr 0.01 --weight_decay 1e-5 --activation 'prelu' --mask_rate 0.75 --drop_edge_rate 0 --replace_rate 0.2 --scheduler --lrtype 'cosine' --save_model --max_epoch 5 --subgraph_size 1024 --cpuinf
+```
+
+### Prodigy
+
+pretrain on arxiv
+```
+python experiments/run_single_experiment.py --dataset arxiv --root <root> --original_features False -ds_cap 24000 -val_cap 100 -test_cap 100 --emb_dim 256 --epochs 1 -ckpt_step 1000 -layers S2,U,M -lr 3e-4 -way 30 -shot 3 -qry 4 -eval_step 5000 -task cls_nm_sb -bs 1 -aug ND0.5,NZ0.5 -aug_test True -attr 1000 --device 0 --prefix MAG_PT_PRODIGY
+```
+
+test on History
+```
+python3 experiments/run_single_experiment.py --dataset bookhis --original_features True -ds_cap 300 -val_cap 300 -test_cap 300 --emb_dim 256 --epochs 1 -ckpt_step 1000 -layers S2,U,M -lr 3e-4 -way 12 -shot 3 -qry 4 -eval_step 50 -task cls_nm_sb  -bs 1 -aug ND0.5,NZ0.5 -aug_test True -attr 1000 --device 0 --prefix test --root <root> -pretrained <ckpt>
+```
 
 
 ## Acknowledgements
