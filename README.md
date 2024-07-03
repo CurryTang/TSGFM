@@ -126,7 +126,7 @@ python3 linkpred.py --pre_train_datasets cora --model SEALGCN --hidden_channels 
 
 Check the best hyper-parameter in the paper (use cpuinf can do full-batch inference on CPU, which is faster on our environment)
 ```
-python3 sslmain.py --pre_train_datasets arxiv sportsfit products --method graphmae --num_heads 4 --num_out_heads 1 --num_layers 3 --num_hidden 1024 --residual --in_drop 0.5 --attn_drop 0.5 --norm 'batchnorm' --lr 0.01 --weight_decay 1e-5 --activation 'prelu' --mask_rate 0.75 --drop_edge_rate 0 --replace_rate 0.2 --scheduler --lrtype 'cosine' --save_model --max_epoch 5 --subgraph_size 1024 --cpuinf
+python3 sslmain.py --pre_train_datasets arxiv sportsfit products --method graphmae --num_heads 4 --num_out_heads 1 --num_layers 3 --num_hidden 1024 --residual --in_drop 0.5 --attn_drop 0.5 --norm 'batchnorm' --lr 0.01 --weight_decay 1e-5 --activation 'prelu' --mask_rate 0.75 --drop_edge_rate 0 --replace_rate 0.2 --scheduler --lrtype 'cosine' --save_model --max_epoch 5 --subgraph_size 1024 --warmup --cpuinf
 ```
 
 ### Prodigy
