@@ -12,7 +12,7 @@ from sklearn.decomposition import TruncatedSVD
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 from peft import PeftModel
-from llm2vec import LLM2Vec
+# from llm2vec import LLM2Vec
 ENCODER_DIM_DICT = {"ST": 768, "e5": 1024, "llama2_7b": 4096, "llama2_13b": 5120, 'minilm':384, 'random': 128, 'tfidf': 300, "e5_mistral": 4096, "l2v": 4096, "mpnet": 768}
 
 def generate_tfidf_pytorch(texts, hidden_dimension=300):
@@ -98,39 +98,39 @@ class SentenceEncoder:
             self.model.max_seq_length = 4096
             self.encode = self.prompt_ST_encode
         
-        elif self.name == 'l2v':
-            # Loading base Mistral model, along with custom code that enables bidirectional connections in decoder-only LLMs. MNTP LoRA weights are merged into the base model.
-            tokenizer = AutoTokenizer.from_pretrained(
-                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", cache_dir=self.root
-            )
-            config = AutoConfig.from_pretrained(
-                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", trust_remote_code=True, cache_dir=self.root
-            )
-            model = AutoModel.from_pretrained(
-                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
-                trust_remote_code=True,
-                config=config,
-                torch_dtype=torch.bfloat16,
-                device_map="cuda" if torch.cuda.is_available() else "cpu",
-                cache_dir=self.root
-            )
-            model = PeftModel.from_pretrained(
-                model,
-                "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
-                cache_dir=self.root
-            )
-            model = model.merge_and_unload()  # This can take several minutes on cpu
+        # elif self.name == 'l2v':
+        #     # Loading base Mistral model, along with custom code that enables bidirectional connections in decoder-only LLMs. MNTP LoRA weights are merged into the base model.
+        #     tokenizer = AutoTokenizer.from_pretrained(
+        #         "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", cache_dir=self.root
+        #     )
+        #     config = AutoConfig.from_pretrained(
+        #         "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp", trust_remote_code=True, cache_dir=self.root
+        #     )
+        #     model = AutoModel.from_pretrained(
+        #         "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
+        #         trust_remote_code=True,
+        #         config=config,
+        #         torch_dtype=torch.bfloat16,
+        #         device_map="cuda" if torch.cuda.is_available() else "cpu",
+        #         cache_dir=self.root
+        #     )
+        #     model = PeftModel.from_pretrained(
+        #         model,
+        #         "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp",
+        #         cache_dir=self.root
+        #     )
+        #     model = model.merge_and_unload()  # This can take several minutes on cpu
 
-            # Loading supervised model. This loads the trained LoRA weights on top of MNTP model. Hence the final weights are -- Base model + MNTP (LoRA) + supervised (LoRA).
-            model = PeftModel.from_pretrained(
-                model, "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp-supervised",
-                cache_dir=self.root
-            )
+        #     # Loading supervised model. This loads the trained LoRA weights on top of MNTP model. Hence the final weights are -- Base model + MNTP (LoRA) + supervised (LoRA).
+        #     model = PeftModel.from_pretrained(
+        #         model, "McGill-NLP/LLM2Vec-Mistral-7B-Instruct-v2-mntp-supervised",
+        #         cache_dir=self.root
+        #     )
 
-            # Wrapper for encoding and pooling operations
-            l2v = LLM2Vec(model, tokenizer, pooling_mode="mean", max_length=512)
-            self.model = l2v
-            self.encode = self.l2v_encode
+        #     # Wrapper for encoding and pooling operations
+        #     l2v = LLM2Vec(model, tokenizer, pooling_mode="mean", max_length=512)
+        #     self.model = l2v
+        #     self.encode = self.l2v_encode
         elif self.name == "roberta":
             self.model = SentenceTransformer("sentence-transformers/roberta-base-nli-stsb-mean-tokens",
                 device=self.device, cache_folder=self.root, )

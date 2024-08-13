@@ -1,7 +1,6 @@
 ## SUPPORTED SSL METHODS: DGI, GCC, BGRL
 
 import torch
-import GCL
 import torch.nn.functional as F
 from torch_geometric.nn.inits import uniform
 from torch_geometric.nn import global_mean_pool

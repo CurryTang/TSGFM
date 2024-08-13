@@ -50,7 +50,7 @@ def replace_walk_length_values(data, val):
 
 def main(params):
     wandb.log({'params': params.__dict__})
-    encoder = SentenceEncoder(params.llm_name, root="/localscratch/chenzh85", batch_size=params.llm_b_size)
+    encoder = SentenceEncoder(params.llm_name, root=".", batch_size=params.llm_b_size)
     task_config_lookup = load_yaml(
         os.path.join(os.path.dirname(__file__), "configs", "task_config.yaml")
     )
@@ -66,6 +66,7 @@ def main(params):
     if params.llm_name != "ST":
         root = f"cache_data_{params.llm_name}"
 
+    # import ipdb; ipdb.set_trace()
     tasks = UnifiedTaskConstructor(
         task_names,
         encoder,

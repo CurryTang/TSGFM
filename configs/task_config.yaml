@@ -298,6 +298,7 @@ dblp_link: &dblp_link
 
 FB15K237: &FB15K237
   <<: *E2E-link
+  dataset: FB15K237
   eval_set_constructs:
     - stage: train
       split_name: train
@@ -314,6 +315,7 @@ FB15K237: &FB15K237
 
 WN18RR: &WN18RR
   <<: *E2E-link
+  dataset: WN18RR
   eval_set_constructs:
     - stage: train
       split_name: train
