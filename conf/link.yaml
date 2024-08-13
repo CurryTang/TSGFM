@@ -1,0 +1,30 @@
+batch_size: 128
+eval_batch_size: 128
+dropout: 0.15
+lr: 0.001
+num_layers: 7
+JK : "none"
+
+task_names:
+  - "citeseer_link"
+  - "cora_link"
+  - "pubmed_link"
+  - "WN18RR"
+  - "FB15K237"
+
+d_multiple:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+
+
+
+
+d_min_ratio:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1

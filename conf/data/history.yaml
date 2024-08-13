@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - data_defaults
+
+data:
+  name: history # To be overwritten by dataset specific values.
+  alias: HistoryTAG
+  type: tsgfm
+  dataset_path: cache_data_minilm/bookhis/processed/geometric_data_processed.pt
+  text:
+    mode: label_name
+  label_name:
+    '0': World,Explores global events and trends throughout history.
+    '1': Americas,"Delves into the rich history of North, Central, and South America.
+    '2': Asia,Focuses on the diverse cultures and historical developments in Asia.
+    '3': Military,"Examines wars, conflicts, military strategy, and their impact on history.
+    '4': Europe,Covers the complex history of the European continent.
+    '5': Russia,"Specifically studies the history of Russia, its empires, and its role in the world.
+    '6': Africa,Explores the vast and diverse histories of African nations and cultures.
+    '7': Ancient Civilizations,"Investigates the origins, rise, and fall of early civilizations.
+    '8': Middle East,"Examines the history of the Middle East, including its cultures and pivotal events.
+    '9': Historical Study & Educational Resources,"Provides tools, guides, and resources for the study of history.
+    '10': Australia & Oceania,"Focuses on the history of Australia, New Zealand, and Pacific Island nations.
+    '11': Arctic & Antarctica,Explores the history and significance of the polar regions.
+  label_text: name
+  n_labels: 12
+  n_nodes: 41551
+  feat_dim: 384
+  task_description: >-
+    You are a helpful assistant that classifies the category of an academic paper based on the labels of the cited papers. You are going to choose the correct answer from several choices of paper categories: ${data.label_description}

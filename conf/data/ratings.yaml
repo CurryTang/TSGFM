@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - data_defaults
+
+data:
+  name: ratings # To be overwritten by dataset specific values.
+  alias: RatingsTAG
+  type: tsgfm
+  dataset_path: cache_data_minilm/amazonratings/processed/geometric_data_processed.pt
+  text:
+    mode: label_name
+  label_name:
+    '0': 5 score, 5 score awesome ratings users are extremely satisfied with the products.
+    '1': 4.5 score good ratings users are satisfied with the products but there's space to be even better.
+    '2': 4 score good ratings users like the products but there's still much space to be better. 
+    '3': 3.5 score average ratings users are neutral about the products.
+    '4': 0-3 score bad ratings users think the products are bad.
+  label_text: name
+  n_labels: 5
+  n_nodes: 24492
+  feat_dim: 384
+  task_description: >-
+    You are a helpful assistant that predicts the score of the products given the user comments: ${data.label_description}
