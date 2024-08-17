@@ -1,4 +1,5 @@
 import copy
+import torchmetrics.classification
 from tqdm import tqdm
 import torch
 import torch.nn as nn
@@ -6,8 +7,9 @@ import torch.nn.functional as F
 from graphmae.utils import create_optimizer, accuracy
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
-from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
+from sklearn.metrics import f1_score, average_precision_score, roc_auc_score, accuracy_score
 from torch_geometric.nn import global_mean_pool
+import torchmetrics
 
 
 class LinkPredictor(torch.nn.Module):
@@ -427,3 +429,102 @@ class LogisticRegression(nn.Module):
     def forward(self, x):
         logits = self.linear(x)
         return logits
+    
+
+
+def eval_gppt(level='node', data = None, loader = None, gnn = None, prompt = None, G = None, device = 'cuda', \
+    num_class = 3):
+    if level == 'node':
+        prompt.eval()
+        prompt.to(device)
+        gnn.eval()
+        gnn.to(device)
+        data = data.to(device)
+        node_embedding = gnn(data.x, data.edge_index)
+        out = prompt(node_embedding, data.edge_index)
+        pred = out.argmax(dim=1)
+        with torch.no_grad():
+            test_acc = accuracy_score(pred.cpu()[G.test_mask], data.y.cpu()[G.test_mask])
+            val_acc = accuracy_score(pred.cpu()[G.val_mask], data.y.cpu()[G.val_mask])
+        return test_acc, val_acc
+    elif level == 'link':
+        prompt.eval()
+        prompt.to(device)
+        gnn.eval()
+        gnn.to(device)
+        data = data.to(device)
+        node_embedding = gnn(data.x, data.edge_index)
+        out = prompt(node_embedding, data.edge_index)
+        return link_linear_test(out, data, 100, device, mute=True)
+    elif level == 'graph':
+        prompt.eval()
+        prompt.to(device)
+        gnn.eval()
+        gnn.to(device)
+        accuracy = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_class).to(device)
+        macro_f1 = torchmetrics.classification.F1Score(task="multiclass", num_classes=num_class, average="macro").to(device)
+        auroc = torchmetrics.classification.AUROC(task="multiclass", num_classes=num_class).to(device)
+        ap = torchmetrics.classification.AveragePrecision(task="multiclass", num_classes=num_class).to(device)
+        with torch.no_grad(): 
+            for batch in loader:
+                batch=batch.to(device)              
+                node_embedding = gnn(batch.x,batch.edge_index)
+                out = prompt(node_embedding, batch.edge_index)     
+                predicted_classes = out.argmax(dim=1)
+                votes = predicted_classes.bincount(minlength=out.shape[1])
+                pred = votes.argmax()
+                pred = pred.unsqueeze(dim=-1)
+                average_out = torch.nn.functional.softmax(votes.float(), dim=0).unsqueeze(dim=0)
+                
+                acc = accuracy(pred, batch.y)
+                ma_f1 = macro_f1(pred, batch.y)
+                roc = auroc(average_out, batch.y)
+                ap = ap(average_out, batch.y)
+        
+        acc = accuracy.compute()
+        ma_f1 = macro_f1.compute()
+        roc = auroc.compute()
+        ap = ap.compute()
+        return acc, ma_f1, roc, ap
+    else:
+        raise ValueError(f"level should be one of ['node', 'link', 'graph']")
+    
+
+
+def eval_g_prompt(loader, gnn, prompt, center_embedding, num_class, device):
+    prompt.eval()
+    accuracy = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_class).to(device)
+    macro_f1 = torchmetrics.classification.F1Score(task="multiclass", num_classes=num_class, average="macro").to(device)
+    auroc = torchmetrics.classification.AUROC(task="multiclass", num_classes=num_class).to(device)
+    auprc = torchmetrics.classification.AveragePrecision(task="multiclass", num_classes=num_class).to(device)
+    ap = torchmetrics.classification.AveragePrecision(task="multiclass", num_classes=num_class).to(device)
+
+    accuracy.reset()
+    macro_f1.reset()
+    auroc.reset()
+    auprc.reset()
+    with torch.no_grad(): 
+        for batch_id, batch in enumerate(loader): 
+            batch = batch.to(device) 
+            # out = gnn(batch.x, batch.edge_index, batch.batch, prompt, 'Gprompt')
+            out = gnn(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+            node_emb = prompt(out)
+            graph_emb = global_mean_pool(node_emb, batch.batch)
+            similarity_matrix = F.cosine_similarity(graph_emb.unsqueeze(1), center_embedding.unsqueeze(0), dim=-1)
+            pred = similarity_matrix.argmax(dim=1)
+            acc = accuracy(pred, batch.y)
+            ma_f1 = macro_f1(pred, batch.y)
+            roc = auroc(similarity_matrix, batch.y)
+            prc = auprc(similarity_matrix, batch.y)
+            ap = ap(similarity_matrix, batch.y)
+            if len(loader) > 20:
+                print("Batch {}/{} Acc: {:.4f} | Macro-F1: {:.4f}| AUROC: {:.4f}| AUPRC: {:.4f}".format(batch_id,len(loader), acc.item(), ma_f1.item(),roc.item(), prc.item()))
+
+            # print(acc)
+    acc = accuracy.compute()
+    ma_f1 = macro_f1.compute()
+    roc = auroc.compute()
+    prc = auprc.compute()
+    ap = ap.compute()
+       
+    return acc.item(), ma_f1.item(), roc.item(), prc.item(), ap.item()

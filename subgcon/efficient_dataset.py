@@ -149,6 +149,7 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.saint_loader = None
         self.train_loader = None
         self.test_loader = None
+        self.data.is_train = train_mask
         if few_shot:
             self.data.train_mask = update_few_shot_train_mask(data.y)
             self.train_mask = self.data.train_mask
@@ -171,6 +172,7 @@ class NodeSubgraphDataset(SubgraphDataset):
         self.test_loader = test_loader
 
     def search(self, batch_size = 32, shuffle = False, time='train', infmode='cpu'):
+        self.data.is_train = self.train_mask
         #Extract subgraphs for nodes in the list
         if self.topk != -1:
             if self.split_mode == 'graphsaint':

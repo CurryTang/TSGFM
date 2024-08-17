@@ -11,11 +11,12 @@ from torch_geometric.nn import global_mean_pool
 from graphmae.utils import build_args, create_optimizer, set_random_seed, load_best_configs
 from graphmae.data_util import unify_dataset_loader
 from graphmae.models import build_model, TaskHeadModel, build_model_backbone
-from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test, zero_shot_eval
+from graphmae.evaluation import linear_test, link_linear_test, linear_mini_batch_test, zero_shot_eval, eval_gppt, eval_g_prompt
 from graphmae.models.gcn import GNN_node
 from graphmae.models.gcnvn import GNN_node_Virtualnode as GCNVN
 from graphmae.models import build_model
-from subgcon.ssl import DGIEncoder, dgi_train_step, BGRLEncoder, bgrl_train_step
+from subgcon.ssl import DGIEncoder, dgi_train_step, BGRLEncoder, bgrl_train_step, GPrompt, \
+    EdgePred_GPrompt, GPPT, EdgePred_GPPT, pretrain_gppt, pretrain_gprompt, gppt_train_step, gprompt_train_step
 from GCL.models import BootstrapContrast
 import GCL.augmentors as A
 import logging
@@ -24,9 +25,11 @@ from ogb.linkproppred.evaluate import Evaluator
 import pytorch_warmup as warmup
 from GCL.models import SingleBranchContrast
 import GCL.losses as L
-from prompt_graph.pretrain import Edgepred_GPPT, Edgepred_Gprompt
+from torch_geometric.utils import negative_sampling
 
-def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon', mask = None, head_name = None, warmup_scheduler = None, contrast_model = None):
+def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon',  \
+        mask = None, head_name = None, warmup_scheduler = None, contrast_model = None, \
+            prompts = None):
     # Model training
     model.train()
     model = model.to(device)
@@ -54,6 +57,16 @@ def train(model, optimizer, loader, args, scheduler, device, model_type='subgcon
             ## mask and head_name should be provided for this case
             output = model(batch.x.to(device), batch.edge_index.to(device), head_name)
             loss = ce_loss(output[mask], batch.y[mask])
+        elif model_type == 'gppt':
+            ## generate negative samples
+            neg_edge_index = negative_sampling(batch.edge_index)
+            batch.edge_index = torch.cat([batch.edge_index, neg_edge_index], dim = 1)
+            batch.edge_label = torch.cat([torch.ones(batch.edge_index.size(1) // 2, dtype=torch.int64), torch.zeros(batch.edge_index.size(1) // 2, dtype=torch.int64)]).to(device)
+            batch = batch.to(device)
+            loss = pretrain_gppt(model, batch)
+        elif model_type == 'gprompt':
+            batch = batch.to(device)
+            loss = pretrain_gprompt(model, batch)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -108,12 +121,48 @@ def get_all_node_emb(model, num_node, loader, args, device, level='node', modeln
             z.append(node)
     z = torch.cat(z, dim = 0)
     return z
+
+def prompt_tuning(model, prompt, loader, args, device):
+    pg_opi = torch.optim.Adam(prompt.parameters(), lr=args.prompt_lr, weight_decay=args.prompt_wd)
+    if args.method == 'gppt':
+        batch_num = 0
+        total_loss = 0
+        for batch in loader:
+            one_batch_loss = gppt_train_step(model, prompt, batch, pg_opi, device)
+            batch_num += 1
+            total_loss += one_batch_loss
+        avg_loss = total_loss / batch_num
+        mean_centers = None
+    elif args.method == 'gprompt':
+        batch_num = 0
+        total_loss = 0
+        accumulated_centers = None
+        accumulated_counts = None
+        for batch in loader:
+            one_batch_loss, delta_centers, delta_counts = gprompt_train_step(model, prompt, batch, pg_opi, args, device)
+            if accumulated_centers is None:
+                accumulated_centers = delta_centers
+                accumulated_counts = delta_counts
+            else:
+                accumulated_centers += delta_centers
+                accumulated_counts += delta_counts
+            batch_num += 1
+            total_loss += one_batch_loss
+        avg_loss = total_loss / batch_num
+        mean_centers = accumulated_centers / accumulated_counts
+        prompt.mean_centers = mean_centers
+    return avg_loss, mean_centers
+        
+        
+            
+        
+         
     
     
-def node_level_test(model, dataset, loader, args, device):
+def node_level_test(model, dataset, loader, args, device, prompt = None):
     # Model testing
     model.eval()
-    num_node = dataset.num_nodes
+    num_node = dataset.num_nodes        
     with torch.no_grad():
         all_emb = get_all_node_emb(model, num_node, loader, args, device, level = 'node', modeln=args.method)
 
@@ -127,7 +176,7 @@ def node_level_test(model, dataset, loader, args, device):
     print('val_acc = {} test_acc = {}'.format(val_acc, estp_test_acc))
     return val_acc, test_acc
 
-def link_level_test(model, dataset, loader, args, device):
+def link_level_test(model, dataset, loader, args, device, prompt = None):
     model.eval()
     with torch.no_grad():
         z = get_all_node_emb(model, 1, loader, args, device, level = 'link', modeln=args.method)
@@ -138,7 +187,7 @@ def link_level_test(model, dataset, loader, args, device):
     print('val_acc = {} test_acc = {}'.format(val_acc, test_acc))
     return val_acc, test_acc 
 
-def graph_level_test(model, dataset, loader, args, device):
+def graph_level_test(model, dataset, loader, args, device, prompt = None):
     model.eval()
     with torch.no_grad():
         z = get_all_node_emb(model, 1, loader, args, device, level = 'graph', modeln=args.method)
@@ -186,9 +235,13 @@ def main(args):
     use_scheduler = args.scheduler
     ## select method
     if args.method == 'gppt':
-        model = Edgepred_GPPT(dataset_name = args.pre_train_datasets, gnn_type = args.encoder, hid_dim = args.num_hidden, gln = args.num_layers, num_epoch=args.epochs, device=args.device)
+        bmodel = build_model_backbone(args, feature_dim, args.num_hidden).to(device) 
+        model = EdgePred_GPPT(bmodel, feature_dim, args.num_hidden, args.num_hidden)
+        contrast_model = None
     elif args.method == 'gprompt':
-        model = Edgepred_Gprompt(dataset_name = args.pre_train_datasets, gnn_type = args.encoder, hid_dim = args.num_hidden, gln = args.num_layers, num_epoch=args.epochs, device=args.device)
+        bmodel = build_model_backbone(args, feature_dim, args.num_hidden).to(device)
+        model = EdgePred_GPrompt(bmodel, feature_dim, args.hidden_dim, args.num_hidden)
+        contrast_model = None
     elif args.method == 'graphmae':
         model = build_model(args).to(device)
         contrast_model = None
@@ -238,6 +291,19 @@ def main(args):
     
     ## load datas
     datas = unify_dataset_loader(args.pre_train_datasets, args)
+    prompts = []
+    if args.method == 'gppt' or args.method == 'gprompt':
+        print("Use prompt-based methods")
+        for d in datas:
+            # import ipdb; ipdb.set_trace() 
+            if args.method == 'gppt':
+                prompt = GPPT(args.num_hidden, d.num_classes, d.num_classes, device)                
+            elif args.method == 'gprompt':
+                prompt = GPrompt(args.num_hidden, d.num_classes)
+                
+            prompts.append(prompt)
+    else:
+        prompts = None
     ## saved stats
     best_avg_val = 0
     val_accs = []
@@ -253,30 +319,56 @@ def main(args):
         ## pre-train stage
             for i, G in enumerate(datas):
                 train_loader = G.search(batch_size = batch_size, shuffle = True, time='train', infmode='cpu' if args.cpuinf else 'gpu')
-                loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, warmup_scheduler=warmup_scheduler, contrast_model = contrast_model)
+                loss = train(model, optimizer, train_loader, args, scheduler, device, model_type = args.method, \
+                    warmup_scheduler=warmup_scheduler, contrast_model = contrast_model, prompts = prompts)
                 logging.info("Epoch {} Dataset {} Loss {}".format(e, args.pre_train_datasets[i], loss))
-        ## evaluation part
-        eval_val = []
-        eval_test = []
-        for i, G in enumerate(datas):
-            test_loader = G.search(batch_size = batch_size, shuffle = False, time='test', infmode='cpu' if args.cpuinf else 'gpu')
+        
+        if e >= args.eval_epoch_start:
+            ## evaluation part
+            eval_val = []
+            eval_test = []
+            modele = model.gnn_encoder
+            for i, G in enumerate(datas):
+                ## prompt tuning stage
+                if args.method == 'gppt' or args.method == 'gprompt':
+                    prompt = prompts[i]
+                    train_loader = G.search(batch_size = batch_size, shuffle = True, time='train', infmode='cpu' if args.cpuinf else 'gpu')
+                    prompt_tuning(modele, prompt, train_loader, args, device) 
+                        
+                    
+                test_loader = G.search(batch_size = batch_size, shuffle = False, time='test', infmode='cpu' if args.cpuinf else 'gpu')
 
-            this_level = DATASET[args.pre_train_datasets[i]]['level']
-            val_res, test_res = test(model, G, test_loader, args, 'cpu' if args.cpuinf else 'cuda', level = this_level)
-            eval_val.append(val_res)
-            eval_test.append(test_res)
+                if args.method == 'gppt' or args.method == 'gprompt':
+                    this_level = DATASET[args.pre_train_datasets[i]]['level']
+                    if args.method == 'gppt':
+                        if this_level == 'node':
+                            test_acc, val_acc = eval_gppt(this_level, G.data, None, modele, prompt, G, 'cuda', G.num_classes)
+                        elif this_level == 'link':
+                            test_acc, val_acc = eval_gppt(this_level, G.data, None, modele, prompt, G, 'cuda', G.num_classes)
+                        elif this_level == 'graph':
+                            test_acc, test_f1, test_roc, test_ap = eval_gppt(this_level, G.data, None, modele, prompt, G, 'cuda', G.num_classes)
+                        print(test_acc)
+                else:
+                    this_level = DATASET[args.pre_train_datasets[i]]['level']
+                    val_res, test_res = test(model, G, test_loader, args, 'cpu' if args.cpuinf else 'cuda', level = this_level)
+                    eval_val.append(val_res)
+                    eval_test.append(test_res)
+                    for i in range(len(datas)):
+                        logging.info("Epoch {} Dataset {} Val-{} {} Test-{} {}".format(e, args.downstream_datasets[i], DATASET[args.downstream_datasets[i]]['metric'], eval_val[i], DATASET[args.downstream_datasets[i]]['metric'], eval_test[i]))
+                    avg_val = np.mean(eval_val)
+                    if avg_val > best_avg_val:
+                        best_avg_val = avg_val
+                        val_accs = eval_val
+                        test_accs = eval_test
+                        if args.save_model:
+                            if args.method == 'gppt' or args.method == 'gprompt':
+                                torch.save(model.gnn_encoder.state_dict(), saved_model_name)
+                            else:
+                                torch.save(model.state_dict(), saved_model_name)
+    if best_avg_val > 0:
+        logging.info("Best Avg Val {}".format(best_avg_val))
         for i in range(len(datas)):
-            logging.info("Epoch {} Dataset {} Val-{} {} Test-{} {}".format(e, args.downstream_datasets[i], DATASET[args.downstream_datasets[i]]['metric'], eval_val[i], DATASET[args.downstream_datasets[i]]['metric'], eval_test[i]))
-        avg_val = np.mean(eval_val)
-        if avg_val > best_avg_val:
-            best_avg_val = avg_val
-            val_accs = eval_val
-            test_accs = eval_test
-            if args.save_model:
-                torch.save(model.state_dict(), saved_model_name)
-    logging.info("Best Avg Val {}".format(best_avg_val))
-    for i in range(len(datas)):
-        logging.info("Dataset: {} Best Val {} Test {}".format(args.pre_train_datasets[i], val_accs[i], test_accs[i]))
+            logging.info("Dataset: {} Best Val {} Test {}".format(args.pre_train_datasets[i], val_accs[i], test_accs[i]))
     return best_avg_val, val_accs, test_accs    
             
 

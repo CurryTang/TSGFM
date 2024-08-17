@@ -23,7 +23,7 @@ def eval_task(metric):
     return evaluator
 
 
-def load_one_tag_dataset(dataset = "cora", tag_data_path=""):
+def load_one_tag_dataset(dataset = "cora", tag_data_path="cache_data_minilm"):
     AVAILABLE_DATASETS = ['cora', 'citeseer', 'pubmed', 'arxiv', 'arxiv23', 'bookhis', 
                           'bookchild', 'elephoto', 'elecomp', 'sportsfit', 'products', 'wikics', 
                           'cora-link', 'citeseer-link', 'pubmed-link', 'arxiv23-link', 'wikics-link', 

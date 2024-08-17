@@ -143,6 +143,11 @@ def build_args():
     parser.add_argument("--zeroshot", action="store_true", default=False)
     parser.add_argument("--fewshot", action="store_true", default=False)
     parser.add_argument("--eval_only", action="store_true", default=False)
+    
+    ## prompt args
+    parser.add_argument("--prompt_lr", type=float, default=2e-3)
+    parser.add_argument("--prompt_wd", type=float, default=5e-4)
+    parser.add_argument("--eval_epoch_start", type=int, default=0)  
     args = parser.parse_args()
     return args
 

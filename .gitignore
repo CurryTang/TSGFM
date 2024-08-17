@@ -26,6 +26,10 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+
+data/ 
+data_cache/
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -230,8 +234,6 @@ intfloat_e5-mistral-7b-instruct/*
 outdata/
 outdata/*
 
-prompt_graph/
-prompt_graph/*
 
 saved_models/
 saved_models/*
@@ -248,3 +250,47 @@ data/single_graph/sportsfit/sportsfit.csv
 
 dataset/
 dataset/*
+
+
+*.pth
+
+zerog/
+zerog/*
+
+temp/
+temp/*
+
+token_embedding/
+token_embedding/*
+token_embedding2/
+token_embedding2/*
+
+save_models/
+save_models/*
+
+run/
+run/*
+
+prompt_embedding/
+prompt_embedding/*
+
+pretrain_models/
+pretrain_models/*
+
+output/
+output/*
+
+models_graphcl/
+models_graphcl/*
+
+instruct_ds/
+instruct_ds/*
+
+GraphCL/
+GraphCL/*
+
+GLBench_*/
+GLBench_*/*
+
+Experiment/
+Experiment/*

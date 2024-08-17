@@ -93,7 +93,6 @@ def get_spd_matrices(g: dgl.DGLGraph, max_hops, cache_file=None):
     residue_mat = sp.csr_matrix(([], ([], [])), shape=sp_mat_shape, dtype=np.int64)
 
     for hop in tqdm(range(max_hops, 0, -1), 'building SPD matrices'):
-        import ipdb; ipdb.set_trace()
         new_src, new_dst = k_hop_nb_graph(g, hop).edges()
         new_indices = np.vstack((new_src.numpy(), new_dst.numpy()))
         new_residue = sp.csr_matrix((np.full(new_src.shape, 1, dtype=np.int64), new_indices), shape=sp_mat_shape)

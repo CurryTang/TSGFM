@@ -15,9 +15,11 @@ from transformers import AutoTokenizer, LlamaForCausalLM,AutoModelForCausalLM,Ll
 import os
 import shutil
 import joblib
-from prompt_config import get_template_by_dataset
+from graphadapter.prompt_config import get_template_by_dataset
 from tqdm import tqdm
 import sys
+import h5py
+
 sys.path.append(os.getcwd())
 class RawTextData(data_.Dataset):
     def __init__(self, text,node_id):
@@ -37,6 +39,32 @@ def pretrain_collate_fn(data_tuple):
     node_id = node_id.repeat(1,seq.shape[1])
     return seq, node_id
 
+def h5_to_npy_mmap(h5_filename, npy_filename, dataset_name):
+    """
+    Saves a dataset from an HDF5 file into a NumPy .npy file using memory-mapping.
+
+    Args:
+        h5_filename: The name of the HDF5 file.
+        npy_filename: The name of the output NumPy .npy file.
+        dataset_name: The name of the dataset within the HDF5 file.
+    """
+
+    with h5py.File(h5_filename, 'r') as h5_file:
+        dataset = h5_file[dataset_name]
+
+        # Create a memory-mapped NumPy array for the output
+        npy_mmap = np.memmap(npy_filename, dtype=dataset.dtype, mode='w+', shape=dataset.shape)
+
+        # Copy data from the HDF5 dataset to the memory-mapped array in chunks
+        chunk_size = 1024 * 1024  # Adjust chunk size as needed
+        for start in tqdm(range(0, dataset.shape[0], chunk_size)):
+            end = min(start + chunk_size, dataset.shape[0])
+            npy_mmap[start:end] = dataset[start:end]
+
+        # Flush changes to disk and close the memory-mapped array
+        npy_mmap.flush()
+        del npy_mmap 
+
 def build_pretrain_data_by_tables(model,tokenizer,x_text,save_path,template_l_id,device,args):
     
     template_l_id = tokenizer.encode(template_l)[0:]
@@ -45,13 +73,13 @@ def build_pretrain_data_by_tables(model,tokenizer,x_text,save_path,template_l_id
     token_embedding_path = save_path+'token_embeddings.h5' 
     f = tables.open_file(token_embedding_path, mode='w')
     atom = tables.Float16Atom()
-    array_c = f.create_earray(f.root, 'data', atom, (0, 4096))
+    array_c = f.create_earray(f.root, 'data', atom, (0, 1280))
     f.close()
     
     sentence_embedding_path = save_path+'sentence_embeddings.h5'
     f = tables.open_file(sentence_embedding_path, mode='w')
     atom = tables.Float16Atom()
-    array_c = f.create_earray(f.root, 'data', atom, (0, 4096))
+    array_c = f.create_earray(f.root, 'data', atom, (0, 1280))
     f.close()
     
     token_node_ids_path = save_path+'token_node_ids.h5'
@@ -74,6 +102,7 @@ def build_pretrain_data_by_tables(model,tokenizer,x_text,save_path,template_l_id
     print('total node: ', len(feature_ls))
     
     feature_ls_ids = []
+    # import ipdb; ipdb.set_trace()
     for f in tqdm(feature_ls):
         feature_ls_ids.append(tokenizer(f,padding=True,truncation=True, max_length=args.max_length)['input_ids'])
     nodedata_ = RawTextData(feature_ls_ids,list(range(len(feature_ls))))
@@ -101,12 +130,16 @@ def build_pretrain_data_by_tables(model,tokenizer,x_text,save_path,template_l_id
                 mlm_text_id = torch.cat((prompt_l,mlm_text_id),dim=1)
                 labels = torch.cat((prompt_labels,labels),dim=1)
                 
+                # import ipdb; ipdb.set_trace()
+                
                 attention_mask = (mlm_text_id != tokenizer.pad_token_id).long()#.half()
                 
                 mlm_text_id = mlm_text_id.to(device)
                 attention_mask = attention_mask.to(device)
-                embeddings = model.model(input_ids=mlm_text_id, attention_mask=attention_mask)[0]
+                # import ipdb; ipdb.set_trace()
+                embeddings = model.transformer(input_ids=mlm_text_id, attention_mask=attention_mask)[0]
                 embedding_dim = embeddings.shape[-1]
+                # import ipdb; ipdb.set_trace()
                 prompt_last_position = attention_mask.sum(dim=1)-1
                 cls_embedding = embeddings.gather(1,prompt_last_position.view(-1,1,1).repeat(1,1,embedding_dim)).view(-1,embedding_dim)
                 #cls_embeddings_ls.append(cls_embedding.to('cpu'))
@@ -127,6 +160,7 @@ def build_pretrain_data_by_tables(model,tokenizer,x_text,save_path,template_l_id
                
                 
                 f = tables.open_file(token_embedding_path, mode='a')
+                # import ipdb; ipdb.set_trace()
                 f.root.data.append(embeddings)
                 f.close()
 
@@ -153,16 +187,48 @@ def convert_tables_to_npy(save_path):
 
     token_node_ids = tables.open_file(token_node_ids_path, mode='r+').root.data.read()
     np.save(save_path+'token_node_ids.npy',token_node_ids[:,0])
+    print("Save token_node_ids.npy")
     
     token_labels = tables.open_file(token_label_path, mode='r+').root.data.read()
     np.save(save_path+'token_labels.npy',token_labels[:,0])
+    print("Save token_labels.npy")
    
     token_embeddings = tables.open_file(token_embedding_path, mode='r+').root.data.read()
+    print("Open token_embeddings.h5")
     np.save(save_path+'token_embeddings.npy',token_embeddings)
+    print("Save token_embeddings.npy")
+    
+    # h5_to_npy_mmap(token_embedding_path, save_path+'token_embeddings.npy', 'data')
+    # print("Save token_embeddings.npy")
     
     sentence_embeddings = tables.open_file(sentence_embedding_path, mode='r+').root.data.read()
     np.save(save_path+'sentence_embeddings.npy',sentence_embeddings)
+    print("Save sentence_embeddings.npy")
+    
     return True
+
+def cut_input_with_max_length(input_string, max_length):
+    """
+    Cuts the input string to keep only the first 'max_length' tokens.
+
+    Args:
+        input_string: The string to be cut.
+        max_length: The maximum number of tokens to keep.
+
+    Returns:
+        The cut string containing only the first 'max_length' tokens.
+    """
+
+    # Tokenize the input string
+    tokens = input_string.split()  # Basic tokenization, adjust as needed
+
+    # Cut the tokens to the desired length
+    cut_tokens = tokens[:max_length]
+
+    # Join the cut tokens back into a string
+    cut_string = " ".join(cut_tokens)
+
+    return cut_string
 
 
 def get_prompt_embedding(model,tokenizer,x,template_l,template_r,device,args=None):
@@ -170,12 +236,14 @@ def get_prompt_embedding(model,tokenizer,x,template_l,template_r,device,args=Non
     for text in list(x):
         feature_ls.append(text)
     feature_ls_ids = []
+    # import ipdb; ipdb.set_trace()
     for f in feature_ls:
-        feature_ls_ids.append(tokenizer(template_l+f+template_r,padding=True,truncation=True, max_length=args.max_length)['input_ids'])
+        feature_ls_ids.append(tokenizer(template_l+cut_input_with_max_length(f, args.max_length)+template_r,padding=True,truncation=True, max_length=512)['input_ids'])
     nodedata_ = RawTextData(feature_ls_ids,list(range(len(feature_ls))))
     node_data_loader = DataLoader(nodedata_, batch_size=args.batch_size, shuffle=False,collate_fn=pretrain_collate_fn)
     prompt_embeddings_ls = []
     embedding_dim=model.config.hidden_size
+    model = model.to(device)
     for i in range(1):
         train_position = []
         for (text,node_id) in tqdm(node_data_loader):
@@ -185,7 +253,7 @@ def get_prompt_embedding(model,tokenizer,x,template_l,template_r,device,args=Non
                 attention_mask = (text_id != tokenizer.pad_token_id).long()
                 text_id = text_id.to(device)
                 attention_mask = attention_mask.to(device)
-                output = model.model(input_ids=text_id, attention_mask=attention_mask)[0]
+                output = model.transformer(input_ids=text_id, attention_mask=attention_mask)[0]
                 
                 embeddings = output[..., :-1, :].contiguous()
                 labels = labels[..., 1:].long()
@@ -207,11 +275,11 @@ def save_lm_head(model):
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('preprocess text-attributed graph by LLMs to gain the token embedding')
-    parser.add_argument('--dataset_name', type=str, help='dataset to be used', default='instagram',
-                        choices=['cora','citeseer','pubmed','arxiv', 'instagram', 'reddit','wikics'])
-    parser.add_argument('--batch_size', type=int, default=2, help='batch size of llama 2')
-    parser.add_argument('--max_length', type=int, default=1024) 
-    parser.add_argument('--plm_path', type=str, default='/data/yuhanli/Llama-2-7b-hf', help='path of llama 2')
+    parser.add_argument('--dataset_name', type=str, help='dataset to be used', default='instagram')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch size of llama 2')
+    parser.add_argument('--max_length', type=int, default=2048) 
+    # /localscratch/chenzh85/models--mistralai--Mistral-7B-v0.1/snapshots/26bca36bde8333b5d7f72e9ed20ccda6a618af24
+    parser.add_argument('--plm_path', type=str, default='/localscratch/chenzh85/gpt2-large', help='path of llama 2')
     parser.add_argument('--gpu', type=int, default=0, help='number of gpu to use')
     parser.add_argument('--pretrain_save_path', type=str, default='./token_embedding/', help='path of saving pretrain data')
     parser.add_argument('--prompt_save_path', type=str, default='./prompt_embedding/', help='path of saving prompt embedding')
@@ -229,8 +297,12 @@ if __name__ == "__main__":
         tokenizer.pad_token='[PAD]' # for batch preprocess
     
         save_lm_head(model)
-        data = torch.load(f'../../../datasets/{args.dataset_name}.pt')
-        x_text = data.raw_texts
+        data = torch.load(f'cache_data_minilm/{args.dataset_name}/processed/geometric_data_processed.pt')
+        texts = torch.load(f'cache_data_minilm/{args.dataset_name}/processed/texts.pkl')
+        for i in range(len(texts)):
+            if 'feature node.' in texts[i]:
+                texts[i] = texts[i].replace('feature node.','')
+        x_text = texts[0]
 
     if(args.type == 'pretrain') or (args.type=='all'):
         

@@ -4,7 +4,8 @@ import torch_geometric as pyg
 import numpy as np
 import json
 from data.ofa_data import OFAPygDataset
-
+from graphcl.loader import drop_nodes, subgraph
+import numpy as np
 import pickle
 from datasets import load_dataset
 import pandas as pd
@@ -136,11 +137,15 @@ class MolOFADataset(OFAPygDataset):
 
     def get(self, index):
         data = super().get(index)
-        node_feat = self.node_embs[data.x]
-        edge_feat = self.edge_embs[data.xe]
+        # import ipdb; ipdb.set_trace()
+        node_feat = self.data.node_embs[data.x]
+        edge_feat = self.data.edge_embs[data.xe]
         data.node_text_feat = node_feat
         data.edge_text_feat = edge_feat
         data.y = data.y.view(1, -1)
+        data.x = data.node_text_feat
+        data.xe = data.edge_text_feat
+
         return data
 
     def get_idx_split(self):
@@ -154,6 +159,59 @@ class MolOFADataset(OFAPygDataset):
             return {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0]}
         elif mode == "lr_graph":
             return {"f2n": [1, 0], "n2f": [3, 0]}
+
+
+
+
+class MolOFADataset_aug(OFAPygDataset):
+    def gen_data(self):
+        pyg_graph, texts, split = gen_graph(*get_local_text(self.name))
+        return [d for d in pyg_graph], texts, split
+
+    def add_text_emb(self, data_list, text_emb):
+        """
+        Since the majority of node/edge text embeddings are repeated, we only store unique
+        ones, and keep the indices.
+        """
+        data, slices = self.collate(data_list)
+        data.node_embs = text_emb[0]
+        data.edge_embs = text_emb[1]
+        data.class_node_text_feat = text_emb[2]
+        data.prompt_edge_text_feat = text_emb[3]
+        data.noi_node_text_feat = text_emb[4]
+        return data, slices
+
+    def get(self, index):
+        data = super().get(index)
+        # import ipdb; ipdb.set_trace()
+        node_feat = self.data.node_embs[data.x]
+        edge_feat = self.data.edge_embs[data.xe]
+        data.node_text_feat = node_feat
+        data.edge_text_feat = edge_feat
+        data.y = data.y.view(1, -1)
+        data.x = data.node_text_feat
+        data.xe = data.edge_text_feat
+
+        n = np.random.randint(2)
+        if n == 0:
+            data = drop_nodes(data, 0.2)
+        else:
+            data = subgraph(data, 0.2)
+        # import ipdb; ipdb.set_trace()
+        return data
+
+    def get_idx_split(self):
+        return self.side_data[0]
+
+    def get_task_map(self):
+        return self.side_data[1]
+
+    def get_edge_list(self, mode="e2e"):
+        if mode == "e2e_graph":
+            return {"f2n": [1, 0], "n2f": [3, 0], "n2c": [2, 0]}
+        elif mode == "lr_graph":
+            return {"f2n": [1, 0], "n2f": [3, 0]}
+
 
 
 if __name__ == "__main__":

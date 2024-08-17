@@ -28,7 +28,7 @@ class Bedrock(LLM):
         )
     
     @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
-    def generate_text(self, prompt, max_new_tokens=10, choice_only=False):
+    def generate_text(self, prompt, max_new_tokens=300, choice_only=False):
         response = self.llm.complete(prompt, max_tokens=max_new_tokens).text
         sleep(self.sleep_time)
         return response
