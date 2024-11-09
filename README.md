@@ -138,7 +138,7 @@ python experiments/run_single_experiment.py --dataset arxiv --root <root> --orig
 
 test on History
 ```
-python3 experiments/run_single_experiment.py --dataset bookhis --original_features True -ds_cap 300 -val_cap 300 -test_cap 300 --emb_dim 256 --epochs 1 -ckpt_step 1000 -layers S2,U,M -lr 3e-4 -way 12 -shot 3 -qry 4 -eval_step 50 -task cls_nm_sb  -bs 1 -aug ND0.5,NZ0.5 -aug_test True -attr 1000 --device 0 --prefix test --root <root> -pretrained <ckpt>
+python3 experiments/run_single_experiment.py --dataset bookhis --original_features True -ds_cap 300 -val_cap 300 -test_cap 300 --emb_dim 256 --epochs 1 -ckpt_step 1000 -layers S2,U,M -lr 3e-4 -way 12 -shot 3 -qry 4 -eval_step 50 -task cls_nm_sb  -bs 1 -aug ND0.5,NZ0.5 -aug_test True -attr 1000 --device 0 --prefix test --root <root> -pretrained <ckpt> --eval_only True
 ```
 
 
