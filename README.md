@@ -1,5 +1,7 @@
 # Code and Datasets for *Text-space Graph Foundation Models: Comprehensive Benchmarks and New Insights*
 
+** Notes: we find a parameter error for previous evaluation for Prodigy, please see our updated results and new commands. (You must set the task to classification and use eval_only True for evaluation otherwise there will be some leakage problem)**
+
 This is the code repo accompanying our paper "Text-space Graph Foundation Models: Comprehensive Benchmarks and New Insights."
 
 We implement the following graph foundation model building blocks.
